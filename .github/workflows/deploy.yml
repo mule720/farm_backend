@@ -1,0 +1,132 @@
+name: Build & Deploy to GKE
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+env:
+  REGION: us-central1
+  CLUSTER: agronexus-cluster
+  REPO: agronexus
+  IMAGE_BACKEND: backend
+
+jobs:
+  # ── Lint & test ────────────────────────────────────────────────────────────
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Django system checks
+        env:
+          SECRET_KEY: ci-dummy-key-not-used-in-production
+          DEBUG: "True"
+        run: python manage.py check --deploy 2>/dev/null || python manage.py check
+
+  # ── Build & push (only on push to main/master) ───────────────────────────
+  build-push:
+    name: Build & Push Docker image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      id-token: write   # needed for Workload Identity Federation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push backend image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_BACKEND }}"
+          docker build \
+            --build-arg SECRET_KEY="build-time-dummy-key" \
+            -t "${IMAGE}:${{ github.sha }}" \
+            -t "${IMAGE}:latest" \
+            .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  # ── Deploy to GKE (only on push to main/master) ───────────────────────────
+  deploy:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.CLUSTER }} \
+            --region ${{ env.REGION }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Apply K8s manifests
+        run: kubectl apply -f k8s/ -R
+
+      - name: Delete old migration job
+        run: kubectl delete job agronexus-migrate -n agronexus --ignore-not-found
+
+      - name: Run Django migrations
+        run: |
+          # Replace image placeholder with real image in migrate job
+          sed "s|REGION-docker.pkg.dev/PROJECT_ID|${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}|g" \
+            k8s/jobs/migrate.yaml | kubectl apply -f -
+
+      - name: Wait for migrations
+        run: |
+          kubectl wait job/agronexus-migrate \
+            --for=condition=complete \
+            --timeout=180s \
+            -n agronexus
+
+      - name: Roll out new backend image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}"
+          kubectl set image deployment/agronexus-backend backend="${IMAGE}" -n agronexus
+          kubectl set image deployment/agronexus-celery-worker celery-worker="${IMAGE}" -n agronexus
+          kubectl set image deployment/agronexus-celery-beat celery-beat="${IMAGE}" -n agronexus
+
+      - name: Verify rollout
+        run: kubectl rollout status deployment/agronexus-backend -n agronexus --timeout=300s

@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agronexus-celery-worker
+  namespace: agronexus
+  labels:
+    app: agronexus-celery-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agronexus-celery-worker
+  template:
+    metadata:
+      labels:
+        app: agronexus-celery-worker
+    spec:
+      serviceAccountName: agronexus-sa
+      containers:
+        - name: celery-worker
+          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          # Override CMD — same image as backend, different entrypoint
+          command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=2"]
+          envFrom:
+            - configMapRef:
+                name: agronexus-config
+            - secretRef:
+                name: agronexus-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+
+        # Cloud SQL proxy sidecar (worker also needs DB access)
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "PROJECT_ID:REGION:agronexus-db"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            runAsNonRoot: true

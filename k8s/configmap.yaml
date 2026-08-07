@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agronexus-config
+  namespace: agronexus
+data:
+  DEBUG: "False"
+  DJANGO_SETTINGS_MODULE: "config.settings"
+  ALLOWED_HOSTS: "api.yourdomain.com,agronexus-backend,10.0.0.0/8"
+  CORS_ALLOWED_ORIGINS: "https://yourdomain.com"
+  REDIS_URL: "redis://agronexus-redis:6379/0"
+  GCS_MEDIA_BUCKET: "agronexus-media-prod"
+  EMAIL_HOST: "smtp.sendgrid.net"
+  EMAIL_PORT: "587"
+  DEFAULT_FROM_EMAIL: "AgroNexus <noreply@yourdomain.com>"
+  TIME_ZONE: "Africa/Lusaka"

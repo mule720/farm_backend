@@ -15,8 +15,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Collect static files (whitenoise serves them at runtime)
-RUN python manage.py collectstatic --noinput
+# Collect static files (whitenoise serves them at runtime).
+# SECRET_KEY is only needed so Django can start during build — not used at runtime.
+ARG SECRET_KEY="build-time-dummy-key-collectstatic-only"
+RUN SECRET_KEY=${SECRET_KEY} DEBUG=False python manage.py collectstatic --noinput
 
 # Run as non-root
 RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app

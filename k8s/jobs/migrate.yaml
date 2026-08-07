@@ -1,0 +1,125 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Django Migration Job
+#
+# Runs `python manage.py migrate` as a one-off Kubernetes Job.
+# Always run this BEFORE deploying a new backend version that has migrations.
+#
+# Usage:
+#   # Delete any previous run first
+#   kubectl delete job agronexus-migrate -n agronexus --ignore-not-found
+#
+#   # Apply and run
+#   kubectl apply -f k8s/jobs/migrate.yaml
+#
+#   # Watch progress
+#   kubectl logs -f job/agronexus-migrate -n agronexus
+#
+#   # Confirm it completed successfully
+#   kubectl get job agronexus-migrate -n agronexus
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agronexus-migrate
+  namespace: agronexus
+  labels:
+    app: agronexus-migrate
+spec:
+  # Don't retry on failure — migrations are not safe to retry blindly
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: agronexus-migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: agronexus-sa
+      containers:
+        - name: migrate
+          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - configMapRef:
+                name: agronexus-config
+            - secretRef:
+                name: agronexus-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # Cloud SQL proxy — job also needs DB access via the proxy
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "PROJECT_ID:REGION:agronexus-db"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            runAsNonRoot: true
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Django Superuser Creation Job
+#
+# Run once after first deploy to create the Django admin superuser.
+#
+# Usage:
+#   kubectl apply -f k8s/jobs/migrate.yaml
+#   kubectl logs -f job/agronexus-createsuperuser -n agronexus
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agronexus-createsuperuser
+  namespace: agronexus
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: agronexus-sa
+      containers:
+        - name: createsuperuser
+          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          # Uses DJANGO_SUPERUSER_* env vars for non-interactive creation
+          command: ["python", "manage.py", "createsuperuser", "--noinput"]
+          envFrom:
+            - configMapRef:
+                name: agronexus-config
+            - secretRef:
+                name: agronexus-secrets
+          env:
+            # Profile.REQUIRED_FIELDS = ['full_name'] so all three vars are needed
+            - name: DJANGO_SUPERUSER_EMAIL
+              value: "admin@yourdomain.com"        # ← change before running
+            - name: DJANGO_SUPERUSER_FULL_NAME
+              value: "Platform Admin"              # ← change before running
+            - name: DJANGO_SUPERUSER_PASSWORD
+              value: "ChangeMe123!"               # ← change to a strong password
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "PROJECT_ID:REGION:agronexus-db"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+          securityContext:
+            runAsNonRoot: true

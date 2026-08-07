@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agronexus-backend
+  namespace: agronexus
+  labels:
+    app: agronexus-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agronexus-backend
+  template:
+    metadata:
+      labels:
+        app: agronexus-backend
+    spec:
+      serviceAccountName: agronexus-sa   # needs Cloud SQL & GCS IAM roles
+      containers:
+        # ── Main Django container ──────────────────────────────────
+        - name: backend
+          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: agronexus-config
+            - secretRef:
+                name: agronexus-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+        # ── Cloud SQL Auth Proxy sidecar ───────────────────────────
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "PROJECT_ID:REGION:agronexus-db"   # Replace with your instance
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            runAsNonRoot: true

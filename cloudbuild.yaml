@@ -1,0 +1,171 @@
+# Google Cloud Build — CI/CD pipeline for AgroNexus
+# Trigger: push to main branch
+#
+# Substitutions (set in Cloud Build trigger settings):
+#   _REGION        e.g. us-central1
+#   _PROJECT_ID    your GCP project ID
+#   _CLUSTER       your GKE cluster name
+#   _VITE_API_URL  e.g. https://api.yourdomain.com/graphql/
+
+steps:
+  # ── 1. Build Backend Docker image ─────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: build-backend
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend:${SHORT_SHA}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend:latest"
+      - ./
+    waitFor: ["-"]
+
+  # ── 2. Build Frontend Docker image ────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: build-frontend
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/frontend:${SHORT_SHA}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/frontend:latest"
+      - --build-arg
+      - "VITE_API_URL=${_VITE_API_URL}"
+      - ../farm_frontend
+    waitFor: ["-"]
+
+  # ── 3. Push Backend image ──────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: push-backend
+    args:
+      - push
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend"
+    waitFor: ["build-backend"]
+
+  # ── 4. Push Frontend image ─────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: push-frontend
+    args:
+      - push
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/frontend"
+    waitFor: ["build-frontend"]
+
+  # ── 5. Get GKE credentials ────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: get-credentials
+    args:
+      - container
+      - clusters
+      - get-credentials
+      - "${_CLUSTER}"
+      - --region
+      - "${_REGION}"
+      - --project
+      - "${_PROJECT_ID}"
+    waitFor: ["push-backend", "push-frontend"]
+
+  # ── 6. Apply K8s manifests ────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: apply-manifests
+    args: ["apply", "-f", "k8s/", "-R"]
+    env:
+      - "CLOUDSDK_COMPUTE_REGION=${_REGION}"
+      - "CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER}"
+    waitFor: ["get-credentials"]
+
+  # ── 6b. Run Django migrations before rolling out new pods ─────────────────
+  # Delete previous migration job if it exists, then run a fresh one.
+  # Rollout steps below wait for this to succeed before updating pods.
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: delete-old-migrate-job
+    args:
+      - delete
+      - job/agronexus-migrate
+      - -n
+      - agronexus
+      - --ignore-not-found
+    env:
+      - "CLOUDSDK_COMPUTE_REGION=${_REGION}"
+      - "CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER}"
+    waitFor: ["apply-manifests"]
+
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: run-migrations
+    args:
+      - apply
+      - -f
+      - k8s/jobs/migrate.yaml
+      - -n
+      - agronexus
+    env:
+      - "CLOUDSDK_COMPUTE_REGION=${_REGION}"
+      - "CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER}"
+    waitFor: ["delete-old-migrate-job"]
+
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: wait-for-migrations
+    args:
+      - wait
+      - job/agronexus-migrate
+      - --for=condition=complete
+      - --timeout=180s
+      - -n
+      - agronexus
+    env:
+      - "CLOUDSDK_COMPUTE_REGION=${_REGION}"
+      - "CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER}"
+    waitFor: ["run-migrations"]
+
+  # ── 7. Roll out new images ────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: rollout-backend
+    args:
+      - set
+      - image
+      - deployment/agronexus-backend
+      - "backend=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend:${SHORT_SHA}"
+      - -n
+      - agronexus
+    waitFor: ["wait-for-migrations"]
+
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: rollout-worker
+    args:
+      - set
+      - image
+      - deployment/agronexus-celery-worker
+      - "celery-worker=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend:${SHORT_SHA}"
+      - -n
+      - agronexus
+    waitFor: ["wait-for-migrations"]
+
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: rollout-beat
+    args:
+      - set
+      - image
+      - deployment/agronexus-celery-beat
+      - "celery-beat=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend:${SHORT_SHA}"
+      - -n
+      - agronexus
+    waitFor: ["wait-for-migrations"]   # beat uses DB scheduler — must run after migrate
+
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: rollout-frontend
+    args:
+      - set
+      - image
+      - deployment/agronexus-frontend
+      - "frontend=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/frontend:${SHORT_SHA}"
+      - -n
+      - agronexus
+    waitFor: ["apply-manifests"]   # frontend is static — no DB dependency
+
+images:
+  - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/backend:${SHORT_SHA}"
+  - "${_REGION}-docker.pkg.dev/${_PROJECT_ID}/agronexus/frontend:${SHORT_SHA}"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

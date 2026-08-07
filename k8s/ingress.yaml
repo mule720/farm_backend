@@ -1,0 +1,82 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agronexus-ingress
+  namespace: agronexus
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "agronexus-ip"   # Reserve this IP in GCP first
+    networking.gke.io/managed-certificates: "agronexus-cert"       # GKE managed TLS cert
+    networking.gke.io/v1beta1.FrontendConfig: "agronexus-frontend-config"
+spec:
+  rules:
+    # Replace yourdomain.com with your actual domain
+    - host: yourdomain.com
+      http:
+        paths:
+          # Frontend — all base routes
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agronexus-frontend
+                port:
+                  number: 80
+
+    - host: api.yourdomain.com
+      http:
+        paths:
+          # Django GraphQL API
+          - path: /graphql/
+            pathType: Prefix
+            backend:
+              service:
+                name: agronexus-backend
+                port:
+                  number: 8000
+          # Django Admin
+          - path: /admin/
+            pathType: Prefix
+            backend:
+              service:
+                name: agronexus-backend
+                port:
+                  number: 8000
+          # Django static files (whitenoise serves them from backend)
+          - path: /static/
+            pathType: Prefix
+            backend:
+              service:
+                name: agronexus-backend
+                port:
+                  number: 8000
+          # Health check
+          - path: /health/
+            pathType: Prefix
+            backend:
+              service:
+                name: agronexus-backend
+                port:
+                  number: 8000
+---
+# GKE Managed TLS Certificate — auto-provisioned, takes ~15 min after DNS propagates
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: agronexus-cert
+  namespace: agronexus
+spec:
+  domains:
+    - yourdomain.com
+    - api.yourdomain.com
+---
+# Force HTTPS redirect
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: agronexus-frontend-config
+  namespace: agronexus
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT

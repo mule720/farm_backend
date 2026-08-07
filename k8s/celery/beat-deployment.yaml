@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agronexus-celery-beat
+  namespace: agronexus
+  labels:
+    app: agronexus-celery-beat
+spec:
+  # ALWAYS 1 — running multiple beat instances causes duplicate scheduled tasks
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agronexus-celery-beat
+  template:
+    metadata:
+      labels:
+        app: agronexus-celery-beat
+    spec:
+      serviceAccountName: agronexus-sa
+      containers:
+        - name: celery-beat
+          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler=django_celery_beat.schedulers:DatabaseScheduler"]
+          envFrom:
+            - configMapRef:
+                name: agronexus-config
+            - secretRef:
+                name: agronexus-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "PROJECT_ID:REGION:agronexus-db"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            runAsNonRoot: true
