@@ -21,8 +21,8 @@ set -euo pipefail
 PROJECT_ID="farming"                       # GCP project ID
 REGION="us-central1"                       # GCP region
 CLUSTER="agronexus-cluster"               # GKE cluster name
-DOMAIN="yourdomain.com"                   # your Spaceship domain e.g. agronexus.io
-API_DOMAIN="api.yourdomain.com"           # e.g. api.agronexus.io
+DOMAIN="agrinexus.com"                    # Spaceship domain
+API_DOMAIN="api.agrinexus.com"           # API subdomain
 REPO="agronexus"                          # Artifact Registry repo name
 
 # PostgreSQL settings

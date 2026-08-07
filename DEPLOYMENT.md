@@ -64,8 +64,8 @@ gcloud config set project farming
 Open `deploy.sh`. The PROJECT_ID is already set to `farming`. Update:
 
 ```bash
-DOMAIN="yourdomain.com"       # your Spaceship domain, e.g. agronexus.io
-API_DOMAIN="api.yourdomain.com"   # e.g. api.agronexus.io
+DOMAIN="agrinexus.com"           # already set
+API_DOMAIN="api.agrinexus.com"   # already set
 ```
 
 ---
@@ -110,7 +110,8 @@ Add these two records:
 
 | Type | Host / Name | Value | TTL |
 |------|------------|-------|-----|
-| A | `@` (root domain) | `<STATIC_IP>` | 300 |
+| A | `@` (root — agrinexus.com) | `<STATIC_IP>` | 300 |
+| CNAME | `www` | `agrinexus.com` | 300 |
 | A | `api` | `<STATIC_IP>` | 300 |
 
 > DNS propagation takes **5–30 minutes**. GKE's ManagedCertificate then auto-provisions SSL — allow **10–15 more minutes** for HTTPS to become active.
@@ -177,7 +178,7 @@ Add these in **GitHub → repo → Settings → Secrets and variables → Action
 | `GCP_PROJECT_ID` | `farming` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | (same as above) |
 | `GCP_SERVICE_ACCOUNT` | `github-deploy@farming.iam.gserviceaccount.com` |
-| `VITE_API_URL` | `https://api.yourdomain.com/graphql/` |
+| `VITE_API_URL` | `https://api.agrinexus.com/graphql/` |
 
 ### Set up Workload Identity Federation (keyless auth — no JSON keys)
 

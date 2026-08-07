@@ -10,11 +10,9 @@ metadata:
     networking.gke.io/v1beta1.FrontendConfig: "agronexus-frontend-config"
 spec:
   rules:
-    # Replace yourdomain.com with your actual domain
-    - host: yourdomain.com
+    - host: agrinexus.com
       http:
         paths:
-          # Frontend — all base routes
           - path: /
             pathType: Prefix
             backend:
@@ -23,7 +21,18 @@ spec:
                 port:
                   number: 80
 
-    - host: api.yourdomain.com
+    - host: www.agrinexus.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agronexus-frontend
+                port:
+                  number: 80
+
+    - host: api.agrinexus.com
       http:
         paths:
           # Django GraphQL API
@@ -67,8 +76,9 @@ metadata:
   namespace: agronexus
 spec:
   domains:
-    - yourdomain.com
-    - api.yourdomain.com
+    - agrinexus.com
+    - www.agrinexus.com
+    - api.agrinexus.com
 ---
 # Force HTTPS redirect
 apiVersion: networking.gke.io/v1beta1
