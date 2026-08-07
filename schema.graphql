@@ -1,0 +1,1800 @@
+type Query {
+  devices(deviceType: String, status: String, enterpriseId: ID): [DeviceType]
+  device(id: ID!): DeviceType
+  deviceStats: DeviceStatType
+  sensorReadings(deviceId: ID, metric: String, enterpriseId: ID, alertsOnly: Boolean, limit: Int): [SensorReadingType]
+  latestReadings(deviceId: ID!): [SensorReadingType]
+  droneFlights(enterpriseId: ID, status: String): [DroneFlightType]
+  droneFlight(id: ID!): DroneFlightType
+  cameraEvents(deviceId: ID, eventType: String, isReviewed: Boolean, limit: Int): [CameraEventType]
+  securityAlerts(severity: String, isResolved: Boolean, limit: Int): [SecurityAlertType]
+  dashboardWidgets(isEnabled: Boolean): [DashboardWidgetType]
+  dashboardSummary: DashboardSummaryType
+  reports(reportType: String, status: String): [ReportType]
+  report(id: ID!): ReportType
+  dashboardTrend: [DashboardTrendPointType]
+  dashboardAlerts(limit: Int): [DashboardAlertItemType]
+  dashboardOrders(limit: Int): [DashboardOrderItemType]
+  recommendations(enterpriseId: ID, batchId: ID, urgency: String, recommendationType: String, isActioned: Boolean, limit: Int): [AIRecommendationType]
+  recommendation(id: ID!): AIRecommendationType
+  intelligenceSummary: IntelligenceSummaryType
+  productionRecords(enterpriseId: ID, batchId: ID, recordType: String, dateFrom: Date, dateTo: Date, limit: Int): [ProductionRecordType]
+  productionRecord(id: ID!): ProductionRecordType
+  productionStats(enterpriseId: ID!): ProductionStatsType
+  inventoryItems(category: String, enterpriseId: ID, lowStockOnly: Boolean): [InventoryItemType]
+  inventoryItem(id: ID!): InventoryItemType
+  inventoryTransactions(itemId: ID, batchId: ID, transactionType: String, limit: Int): [InventoryTransactionType]
+  inventorySummary: InventorySummaryType
+  automationRules(enterpriseId: ID, isEnabled: Boolean): [AutomationRuleType]
+  automationRule(id: ID!): AutomationRuleType
+  triggerLog(ruleId: ID, resolved: Boolean, limit: Int): [TriggerLogType]
+  tasks(status: String, priority: String, assignedToId: ID, enterpriseId: ID): [TaskType]
+  task(id: ID!): TaskType
+  myTasks(status: String): [TaskType]
+  kpis(enterpriseId: ID, category: String, isActive: Boolean): [KPIDefinitionType]
+  kpi(id: ID!): KPIDefinitionType
+  kpiValues(kpiId: ID!, batchId: ID, limit: Int): [KPIValueType]
+  kpiSummary(enterpriseId: ID): [KPISummaryType]
+  customFields(enterpriseId: ID, fieldType: String): [CustomFieldType]
+  customField(id: ID!): CustomFieldType
+  forms(enterpriseId: ID, isActive: Boolean): [FormType]
+  form(id: ID!): FormType
+  submissions(formId: ID, batchId: ID, enterpriseId: ID, limit: Int): [FormSubmissionType]
+  submission(id: ID!): FormSubmissionType
+  templates(category: String, builtInOnly: Boolean): [EnterpriseTemplateType]
+  template(id: String!): EnterpriseTemplateType
+  enterprises(isActive: Boolean): [EnterpriseType]
+  enterprise(id: ID!): EnterpriseType
+  stages(enterpriseId: ID!): [EnterpriseStageType]
+  batches(enterpriseId: ID, status: String): [EnterpriseBatchType]
+  batch(id: ID!): EnterpriseBatchType
+  me: ProfileType
+  organization: OrganizationType
+  members(role: String, isActive: Boolean): [ProfileType]
+  member(id: ID!): ProfileType
+  allOrganizations: [OrganizationType]
+}
+
+type DeviceType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  deviceType: DevicesDeviceDeviceTypeChoices!
+  model: String!
+  firmwareVersion: String!
+  location: String!
+  status: DevicesDeviceStatusChoices!
+  batteryPct: Int
+  signalStrength: Int
+  lastSeenAt: DateTime
+  config: JSONString!
+  pairedBy: ProfileType
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Leverages the internal Python implementation of UUID (uuid.UUID) to provide native UUID objects
+in fields, resolvers and input.
+"""
+scalar UUID
+
+type EnterpriseType {
+  id: UUID!
+  template: EnterpriseTemplateType
+  name: String!
+  category: String!
+  productionType: String!
+  icon: String!
+  color: String!
+  description: String!
+  batchUnit: String!
+  settings: JSONString!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  stageCount: Int
+  activeBatchCount: Int
+}
+
+type EnterpriseTemplateType {
+  id: String!
+  name: String!
+  category: EnterprisesEnterpriseTemplateCategoryChoices!
+  productionType: String!
+  icon: String!
+  color: String!
+  description: String!
+  isBuiltIn: Boolean!
+  stages: JSONString!
+  kpis: JSONString!
+  forms: JSONString!
+  inventoryRules: JSONString!
+  financialCategories: JSONString!
+  automationRules: JSONString!
+  dashboardWidgets: JSONString!
+  tags: JSONString!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""An enumeration."""
+enum EnterprisesEnterpriseTemplateCategoryChoices {
+  """Livestock"""
+  LIVESTOCK
+
+  """Aquaculture"""
+  AQUACULTURE
+
+  """Crop"""
+  CROP
+
+  """Horticulture"""
+  HORTICULTURE
+
+  """Dairy"""
+  DAIRY
+
+  """Apiculture"""
+  APICULTURE
+
+  """Mushroom"""
+  MUSHROOM
+
+  """Hydroponics"""
+  HYDROPONICS
+
+  """Greenhouse"""
+  GREENHOUSE
+
+  """Processing"""
+  PROCESSING
+
+  """Mixed"""
+  MIXED
+
+  """Custom"""
+  CUSTOM
+}
+
+"""
+Allows use of a JSON String for input / output from the GraphQL schema.
+
+Use of this type is *not recommended* as you lose the benefits of having a defined, static
+schema (one of the key benefits of GraphQL).
+"""
+scalar JSONString
+
+"""
+The `DateTime` scalar type represents a DateTime
+value as specified by
+[iso8601](https://en.wikipedia.org/wiki/ISO_8601).
+"""
+scalar DateTime
+
+"""An enumeration."""
+enum DevicesDeviceDeviceTypeChoices {
+  """Sensor"""
+  SENSOR
+
+  """Camera"""
+  CAMERA
+
+  """Drone"""
+  DRONE
+
+  """Gateway"""
+  GATEWAY
+
+  """Controller"""
+  CONTROLLER
+
+  """Weigh Scale"""
+  WEIGHSCALE
+}
+
+"""An enumeration."""
+enum DevicesDeviceStatusChoices {
+  """Online"""
+  ONLINE
+
+  """Offline"""
+  OFFLINE
+
+  """Warning"""
+  WARNING
+
+  """Pairing"""
+  PAIRING
+}
+
+type ProfileType {
+  id: UUID!
+  organization: OrganizationType
+  email: String!
+  fullName: String!
+  role: AccountsProfileRoleChoices!
+  avatarUrl: String!
+  phone: String!
+  isActive: Boolean!
+  preferences: JSONString!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  organizationName: String
+  isPlatformAdmin: Boolean
+}
+
+type OrganizationType {
+  id: UUID!
+  name: String!
+  slug: String!
+  plan: AccountsOrganizationPlanChoices!
+  country: String!
+  currency: String!
+  logoUrl: String!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  memberCount: Int
+}
+
+"""An enumeration."""
+enum AccountsOrganizationPlanChoices {
+  """Free"""
+  FREE
+
+  """Pro"""
+  PRO
+
+  """Enterprise"""
+  ENTERPRISE
+}
+
+"""An enumeration."""
+enum AccountsProfileRoleChoices {
+  """Director / Admin"""
+  DIRECTOR
+
+  """Production Manager"""
+  PRODUCTION_MANAGER
+
+  """Finance Manager"""
+  FINANCE_MANAGER
+
+  """Sales Manager"""
+  SALES_MANAGER
+
+  """Supervisor"""
+  SUPERVISOR
+
+  """Farmhand"""
+  FARMHAND
+
+  """Veterinary Officer"""
+  VET_OFFICER
+
+  """Driver"""
+  DRIVER
+
+  """SaaS Platform Admin"""
+  SAAS_ADMIN
+}
+
+type DeviceStatType {
+  total: Int
+  online: Int
+  offline: Int
+  warning: Int
+}
+
+type SensorReadingType {
+  id: UUID!
+  device: DeviceType!
+  enterprise: EnterpriseType
+  metric: DevicesSensorReadingMetricChoices!
+  value: Decimal!
+  unit: String!
+  isAlert: Boolean!
+  recordedAt: DateTime!
+}
+
+"""An enumeration."""
+enum DevicesSensorReadingMetricChoices {
+  """Dissolved Oxygen"""
+  DISSOLVED_OXYGEN
+
+  """pH"""
+  PH
+
+  """Temperature"""
+  TEMPERATURE
+
+  """Humidity"""
+  HUMIDITY
+
+  """Ammonia"""
+  AMMONIA
+
+  """CO2"""
+  CO2
+
+  """Weight"""
+  WEIGHT
+
+  """Light"""
+  LIGHT
+
+  """Pressure"""
+  PRESSURE
+
+  """Custom"""
+  CUSTOM
+}
+
+"""The `Decimal` scalar type represents a python Decimal."""
+scalar Decimal
+
+type DroneFlightType {
+  id: UUID!
+  device: DeviceType
+  enterprise: EnterpriseType
+  flightType: DevicesDroneFlightFlightTypeChoices!
+  status: DevicesDroneFlightStatusChoices!
+  startTime: DateTime
+  endTime: DateTime
+  flightPath: JSONString
+  areaCoveredHa: Decimal
+  altitudeM: Decimal
+  findings: JSONString!
+  imageUrls: JSONString!
+  notes: String!
+  pilotedBy: ProfileType
+  createdAt: DateTime!
+}
+
+"""An enumeration."""
+enum DevicesDroneFlightFlightTypeChoices {
+  """Survey"""
+  SURVEY
+
+  """Spray"""
+  SPRAY
+
+  """Inspection"""
+  INSPECTION
+
+  """Livestock Count"""
+  COUNT
+}
+
+"""An enumeration."""
+enum DevicesDroneFlightStatusChoices {
+  """Planned"""
+  PLANNED
+
+  """In Flight"""
+  IN_FLIGHT
+
+  """Completed"""
+  COMPLETED
+
+  """Aborted"""
+  ABORTED
+}
+
+type CameraEventType {
+  id: UUID!
+  device: DeviceType!
+  eventType: DevicesCameraEventEventTypeChoices!
+  confidence: Decimal
+  snapshotUrl: String!
+  videoClipUrl: String!
+  metadata: JSONString!
+  isReviewed: Boolean!
+  reviewedBy: ProfileType
+  detectedAt: DateTime!
+}
+
+"""An enumeration."""
+enum DevicesCameraEventEventTypeChoices {
+  """Motion"""
+  MOTION
+
+  """Intruder"""
+  INTRUDER
+
+  """Livestock Count"""
+  LIVESTOCK_COUNT
+
+  """Disease Flag"""
+  DISEASE_FLAG
+
+  """Face Detected"""
+  FACE
+}
+
+type SecurityAlertType {
+  id: UUID!
+  source: DevicesSecurityAlertSourceChoices!
+  sourceId: UUID
+  severity: DevicesSecurityAlertSeverityChoices!
+  title: String!
+  detail: String!
+  isResolved: Boolean!
+  resolvedAt: DateTime
+  resolvedBy: ProfileType
+  createdAt: DateTime!
+}
+
+"""An enumeration."""
+enum DevicesSecurityAlertSourceChoices {
+  """Camera"""
+  CAMERA
+
+  """Sensor"""
+  SENSOR
+
+  """Automation"""
+  AUTOMATION
+
+  """Manual"""
+  MANUAL
+}
+
+"""An enumeration."""
+enum DevicesSecurityAlertSeverityChoices {
+  """Info"""
+  INFO
+
+  """Warning"""
+  WARNING
+
+  """Critical"""
+  CRITICAL
+}
+
+type DashboardWidgetType {
+  id: UUID!
+  profile: ProfileType
+  widgetType: String!
+  title: String!
+  dataSource: String!
+  widgetSize: DashboardDashboardWidgetWidgetSizeChoices!
+  widgetOrder: Int!
+  isEnabled: Boolean!
+  color: String!
+  config: JSONString!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""An enumeration."""
+enum DashboardDashboardWidgetWidgetSizeChoices {
+  """Small"""
+  SMALL
+
+  """Medium"""
+  MEDIUM
+
+  """Large"""
+  LARGE
+
+  """Full Width"""
+  FULL
+}
+
+type DashboardSummaryType {
+  activeEnterprises: Int
+  activeBatches: Int
+  lowStockItems: Int
+  openTasks: Int
+  criticalAlerts: Int
+  totalRecommendations: Int
+}
+
+type ReportType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  reportType: DashboardReportReportTypeChoices!
+  dateFrom: Date
+  dateTo: Date
+  parameters: JSONString!
+  outputFormat: DashboardReportOutputFormatChoices!
+  fileUrl: String!
+  status: DashboardReportStatusChoices!
+  generatedBy: ProfileType
+  generatedAt: DateTime!
+}
+
+"""An enumeration."""
+enum DashboardReportReportTypeChoices {
+  """Production"""
+  PRODUCTION
+
+  """Financial"""
+  FINANCIAL
+
+  """Health"""
+  HEALTH
+
+  """Inventory"""
+  INVENTORY
+
+  """Custom"""
+  CUSTOM
+}
+
+"""
+The `Date` scalar type represents a Date
+value as specified by
+[iso8601](https://en.wikipedia.org/wiki/ISO_8601).
+"""
+scalar Date
+
+"""An enumeration."""
+enum DashboardReportOutputFormatChoices {
+  """PDF"""
+  PDF
+
+  """Excel"""
+  EXCEL
+
+  """CSV"""
+  CSV
+}
+
+"""An enumeration."""
+enum DashboardReportStatusChoices {
+  """Pending"""
+  PENDING
+
+  """Processing"""
+  PROCESSING
+
+  """Ready"""
+  READY
+
+  """Failed"""
+  FAILED
+}
+
+type DashboardTrendPointType {
+  label: String
+  value: Float
+}
+
+type DashboardAlertItemType {
+  module: String
+  msg: String
+  time: String
+  type: String
+}
+
+type DashboardOrderItemType {
+  id: ID
+  customer: String
+  items: String
+  value: Float
+  status: String
+}
+
+type AIRecommendationType {
+  id: UUID!
+  enterprise: EnterpriseType
+  batch: EnterpriseBatchType
+  title: String!
+  detail: String!
+  recommendationType: IntelligenceAIRecommendationRecommendationTypeChoices!
+  urgency: IntelligenceAIRecommendationUrgencyChoices!
+  impact: String!
+  dataSources: JSONString!
+  isActioned: Boolean!
+  actionedAt: DateTime
+  actionedBy: ProfileType
+  modelVersion: String!
+  generatedAt: DateTime!
+  expiresAt: DateTime
+}
+
+type EnterpriseBatchType {
+  id: UUID!
+  enterprise: EnterpriseType!
+  name: String!
+  batchNumber: String!
+  currentStage: EnterpriseStageType
+  quantity: Decimal!
+  unit: String!
+  startDate: Date!
+  expectedEndDate: Date
+  actualEndDate: Date
+  status: EnterprisesEnterpriseBatchStatusChoices!
+  notes: String!
+  metadata: JSONString!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type EnterpriseStageType {
+  id: UUID!
+  name: String!
+  stageOrder: Int!
+  durationDays: Int
+  color: String!
+  description: String!
+  feedingRules: JSONString!
+  healthChecks: JSONString!
+  kpiTargets: JSONString!
+  alerts: JSONString!
+  requiredRecords: JSONString!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""An enumeration."""
+enum EnterprisesEnterpriseBatchStatusChoices {
+  """Active"""
+  ACTIVE
+
+  """Completed"""
+  COMPLETED
+
+  """Cancelled"""
+  CANCELLED
+}
+
+"""An enumeration."""
+enum IntelligenceAIRecommendationRecommendationTypeChoices {
+  """Feeding"""
+  FEEDING
+
+  """Health"""
+  HEALTH
+
+  """Financial"""
+  FINANCIAL
+
+  """Operational"""
+  OPERATIONAL
+
+  """Alert"""
+  ALERT
+
+  """Forecast"""
+  FORECAST
+}
+
+"""An enumeration."""
+enum IntelligenceAIRecommendationUrgencyChoices {
+  """Low"""
+  LOW
+
+  """Medium"""
+  MEDIUM
+
+  """High"""
+  HIGH
+
+  """Critical"""
+  CRITICAL
+}
+
+type IntelligenceSummaryType {
+  total: Int
+  critical: Int
+  high: Int
+  medium: Int
+  low: Int
+  actioned: Int
+}
+
+type ProductionRecordType {
+  id: UUID!
+  enterprise: EnterpriseType!
+  batch: EnterpriseBatchType
+  stage: EnterpriseStageType
+  recordDate: Date!
+  recordType: ProductionProductionRecordRecordTypeChoices!
+  data: JSONString!
+  recordedBy: ProfileType
+  createdAt: DateTime!
+}
+
+"""An enumeration."""
+enum ProductionProductionRecordRecordTypeChoices {
+  """Daily"""
+  DAILY
+
+  """Mortality"""
+  MORTALITY
+
+  """Weight Check"""
+  WEIGHT
+
+  """Feed Record"""
+  FEED
+
+  """Health Check"""
+  HEALTH
+
+  """Harvest"""
+  HARVEST
+
+  """Breeding"""
+  BREEDING
+
+  """Custom"""
+  CUSTOM
+}
+
+type ProductionStatsType {
+  enterpriseId: ID
+  totalRecords: Int
+  dateFrom: Date
+  dateTo: Date
+  recordTypes: [String]
+}
+
+type InventoryItemType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  category: InventoryInventoryItemCategoryChoices!
+  sku: String!
+  unit: String!
+  currentStock: Decimal!
+  reorderLevel: Decimal!
+  unitCost: Decimal
+  supplier: String!
+  notes: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  isLowStock: Boolean
+  stockValue: Float
+}
+
+"""An enumeration."""
+enum InventoryInventoryItemCategoryChoices {
+  """Feed"""
+  FEED
+
+  """Medicine"""
+  MEDICINE
+
+  """Equipment"""
+  EQUIPMENT
+
+  """Chemical"""
+  CHEMICAL
+
+  """Packaging"""
+  PACKAGING
+
+  """Other"""
+  OTHER
+}
+
+type InventoryTransactionType {
+  id: UUID!
+  item: InventoryItemType!
+  batch: EnterpriseBatchType
+  transactionType: InventoryInventoryTransactionTransactionTypeChoices!
+  quantity: Decimal!
+  unitCost: Decimal
+  totalCost: Decimal
+  reference: String!
+  notes: String!
+  recordedBy: ProfileType
+  recordedAt: DateTime!
+}
+
+"""An enumeration."""
+enum InventoryInventoryTransactionTransactionTypeChoices {
+  """Purchase"""
+  PURCHASE
+
+  """Usage"""
+  USAGE
+
+  """Adjustment"""
+  ADJUSTMENT
+
+  """Transfer"""
+  TRANSFER
+
+  """Disposal"""
+  DISPOSAL
+}
+
+type InventorySummaryType {
+  totalItems: Int
+  lowStockCount: Int
+  totalValue: Float
+  categories: [String]
+}
+
+type AutomationRuleType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  description: String!
+  isEnabled: Boolean!
+  conditionMetric: String!
+  conditionOperator: AutomationAutomationRuleConditionOperatorChoices!
+  conditionValue: Decimal!
+  actionType: AutomationAutomationRuleActionTypeChoices!
+  actionMessage: String!
+  actionAssignTo: ProfileType
+  actionChannel: AutomationAutomationRuleActionChannelChoices!
+  actionPriority: AutomationAutomationRuleActionPriorityChoices!
+  cooldownMinutes: Int!
+  lastTriggeredAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  triggerCount: Int
+}
+
+"""An enumeration."""
+enum AutomationAutomationRuleConditionOperatorChoices {
+  """Greater than"""
+  GT
+
+  """Less than"""
+  LT
+
+  """Greater or equal"""
+  GTE
+
+  """Less or equal"""
+  LTE
+
+  """Equal"""
+  EQ
+
+  """Not equal"""
+  NEQ
+}
+
+"""An enumeration."""
+enum AutomationAutomationRuleActionTypeChoices {
+  """Alert"""
+  ALERT
+
+  """Create Task"""
+  TASK
+
+  """Notification"""
+  NOTIFICATION
+
+  """Escalate"""
+  ESCALATE
+
+  """Auto-record"""
+  RECORD
+}
+
+"""An enumeration."""
+enum AutomationAutomationRuleActionChannelChoices {
+  """In-App"""
+  IN_APP
+
+  """SMS"""
+  SMS
+
+  """Email"""
+  EMAIL
+
+  """Push"""
+  PUSH
+}
+
+"""An enumeration."""
+enum AutomationAutomationRuleActionPriorityChoices {
+  """Info"""
+  INFO
+
+  """Warning"""
+  WARNING
+
+  """Critical"""
+  CRITICAL
+}
+
+type TriggerLogType {
+  id: UUID!
+  rule: AutomationRuleType!
+  triggeredAt: DateTime!
+  triggeredValue: Decimal
+  actionTaken: String!
+  notifiedUser: ProfileType
+  resolved: Boolean!
+  resolvedAt: DateTime
+}
+
+type TaskType {
+  id: UUID!
+  enterprise: EnterpriseType
+  batch: EnterpriseBatchType
+  title: String!
+  description: String!
+  status: AutomationTaskStatusChoices!
+  priority: AutomationTaskPriorityChoices!
+  assignedTo: ProfileType
+  dueDate: Date
+  completedAt: DateTime
+  source: AutomationTaskSourceChoices!
+  automationRule: AutomationRuleType
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""An enumeration."""
+enum AutomationTaskStatusChoices {
+  """Pending"""
+  PENDING
+
+  """In Progress"""
+  IN_PROGRESS
+
+  """Done"""
+  DONE
+
+  """Cancelled"""
+  CANCELLED
+}
+
+"""An enumeration."""
+enum AutomationTaskPriorityChoices {
+  """Low"""
+  LOW
+
+  """Medium"""
+  MEDIUM
+
+  """High"""
+  HIGH
+
+  """Critical"""
+  CRITICAL
+}
+
+"""An enumeration."""
+enum AutomationTaskSourceChoices {
+  """Manual"""
+  MANUAL
+
+  """Automation"""
+  AUTOMATION
+}
+
+type KPIDefinitionType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  description: String!
+  unit: String!
+  aggregation: KpisKPIDefinitionAggregationChoices!
+  target: Decimal
+  warningThreshold: Decimal
+  criticalThreshold: Decimal
+  higherIsBetter: Boolean!
+  icon: String!
+  color: String!
+  category: KpisKPIDefinitionCategoryChoices!
+  formula: String!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  latestValue: Float
+  status: String
+}
+
+"""An enumeration."""
+enum KpisKPIDefinitionAggregationChoices {
+  """Average"""
+  AVERAGE
+
+  """Sum"""
+  SUM
+
+  """Latest"""
+  LATEST
+
+  """Minimum"""
+  MIN
+
+  """Maximum"""
+  MAX
+}
+
+"""An enumeration."""
+enum KpisKPIDefinitionCategoryChoices {
+  """Production"""
+  PRODUCTION
+
+  """Financial"""
+  FINANCIAL
+
+  """Health"""
+  HEALTH
+
+  """Quality"""
+  QUALITY
+
+  """Efficiency"""
+  EFFICIENCY
+
+  """Environmental"""
+  ENVIRONMENTAL
+}
+
+type KPIValueType {
+  id: UUID!
+  kpi: KPIDefinitionType!
+  batch: EnterpriseBatchType
+  enterprise: EnterpriseType
+  value: Decimal!
+  recordedAt: DateTime!
+  recordedBy: ProfileType
+  source: KpisKPIValueSourceChoices!
+  notes: String!
+}
+
+"""An enumeration."""
+enum KpisKPIValueSourceChoices {
+  """Manual"""
+  MANUAL
+
+  """Formula"""
+  FORMULA
+
+  """Sensor"""
+  SENSOR
+
+  """Import"""
+  IMPORT
+}
+
+type KPISummaryType {
+  kpiId: ID
+  name: String
+  unit: String
+  currentValue: Float
+  target: Float
+  status: String
+  trend: [Float]
+}
+
+type CustomFieldType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  label: String!
+  fieldType: FormsEngineCustomFieldFieldTypeChoices!
+  isRequired: Boolean!
+  options: JSONString!
+  formula: String!
+  unit: String!
+  minValue: Decimal
+  maxValue: Decimal
+  defaultValue: String!
+  sensorId: String!
+  fieldOrder: Int!
+  isActive: Boolean!
+  createdAt: DateTime!
+}
+
+"""An enumeration."""
+enum FormsEngineCustomFieldFieldTypeChoices {
+  """Text"""
+  TEXT
+
+  """Number"""
+  NUMBER
+
+  """Date"""
+  DATE
+
+  """Dropdown"""
+  DROPDOWN
+
+  """Yes/No"""
+  BOOLEAN
+
+  """Image"""
+  IMAGE
+
+  """GPS Location"""
+  GPS
+
+  """Sensor"""
+  SENSOR
+
+  """Formula"""
+  FORMULA
+}
+
+type FormType {
+  id: UUID!
+  enterprise: EnterpriseType
+  name: String!
+  description: String!
+  frequency: FormsEngineFormFrequencyChoices!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  fields: [FormFieldType!]!
+  fieldCount: Int
+}
+
+"""An enumeration."""
+enum FormsEngineFormFrequencyChoices {
+  """Daily"""
+  DAILY
+
+  """Per Batch"""
+  PER_BATCH
+
+  """Weekly"""
+  WEEKLY
+
+  """Per Harvest"""
+  PER_HARVEST
+
+  """Ad Hoc"""
+  AD_HOC
+
+  """Per Inspection"""
+  PER_INSPECTION
+}
+
+type FormFieldType {
+  id: UUID!
+  customField: CustomFieldType
+  label: String!
+  fieldType: String!
+  isRequired: Boolean!
+  options: JSONString!
+  formula: String!
+  unit: String!
+  fieldOrder: Int!
+  createdAt: DateTime!
+}
+
+type FormSubmissionType {
+  id: UUID!
+  form: FormType!
+  batch: EnterpriseBatchType
+  enterprise: EnterpriseType
+  submittedBy: ProfileType
+  submittedAt: DateTime!
+  data: JSONString!
+  gpsLat: Decimal
+  gpsLng: Decimal
+  notes: String!
+}
+
+type Mutation {
+  pairDevice(input: PairDeviceInput!): PairDevice
+  updateDevice(batteryPct: Int, config: JSONString, id: ID!, location: String, name: String, signalStrength: Int, status: String): UpdateDevice
+  unpairDevice(id: ID!): UnpairDevice
+
+  """Ingest a sensor reading; auto-runs automation rules on the metric."""
+  ingestSensorReading(input: SensorReadingInput!): IngestSensorReading
+  createDroneFlight(input: DroneFlightInput!): CreateDroneFlight
+  updateDroneFlight(altitudeM: Float, areaCoveredHa: Float, findings: JSONString, id: ID!, notes: String, status: String): UpdateDroneFlight
+  reviewCameraEvent(id: ID!): ReviewCameraEvent
+  resolveSecurityAlert(id: ID!): ResolveSecurityAlert
+  createWidget(input: WidgetInput!): CreateWidget
+  updateWidget(id: ID!, input: WidgetInput!): UpdateWidget
+  deleteWidget(id: ID!): DeleteWidget
+  reorderWidgets(orders: [WidgetOrderInput]!): ReorderWidgets
+  createReport(input: ReportInput!): CreateReport
+  generateRecommendations(batchId: ID, enterpriseId: ID): GenerateRecommendations
+  actionRecommendation(id: ID!): ActionRecommendation
+  dismissRecommendation(id: ID!): DismissRecommendation
+  createProductionRecord(input: ProductionRecordInput!): CreateProductionRecord
+  updateProductionRecord(data: JSONString!, id: ID!): UpdateProductionRecord
+  deleteProductionRecord(id: ID!): DeleteProductionRecord
+  createInventoryItem(input: InventoryItemInput!): CreateInventoryItem
+  updateInventoryItem(id: ID!, input: InventoryItemInput!): UpdateInventoryItem
+  deleteInventoryItem(id: ID!): DeleteInventoryItem
+  recordTransaction(input: TransactionInput!): RecordTransaction
+  createAutomationRule(input: AutomationRuleInput!): CreateAutomationRule
+  updateAutomationRule(id: ID!, input: AutomationRuleInput!): UpdateAutomationRule
+  toggleAutomationRule(id: ID!): ToggleAutomationRule
+  deleteAutomationRule(id: ID!): DeleteAutomationRule
+
+  """Manually evaluate a rule against a supplied metric value."""
+  testAutomationRule(id: ID!, testValue: Float!): TestAutomationRule
+  resolveAlert(logId: ID!): ResolveAlert
+  createTask(input: TaskInput!): CreateTask
+  updateTask(assignedToId: ID, description: String, dueDate: Date, id: ID!, priority: String, status: String): UpdateTask
+  deleteTask(id: ID!): DeleteTask
+  createKpi(input: KPIDefinitionInput!): CreateKPI
+  updateKpi(id: ID!, input: KPIDefinitionInput!): UpdateKPI
+  deleteKpi(id: ID!): DeleteKPI
+  recordKpiValue(batchId: ID, enterpriseId: ID, kpiId: ID!, notes: String, value: Float!): RecordKPIValue
+
+  """Evaluate a formula-based KPI from recent production records."""
+  calculateKpi(batchId: ID, kpiId: ID!): CalculateKPI
+  createCustomField(input: CustomFieldInput!): CreateCustomField
+  updateCustomField(id: ID!, input: CustomFieldInput!): UpdateCustomField
+  deleteCustomField(id: ID!): DeleteCustomField
+  createForm(input: FormInput!): CreateForm
+  updateForm(id: ID!, input: FormInput!): UpdateForm
+  deleteForm(id: ID!): DeleteForm
+  addFormField(formId: ID!, input: FormFieldInput!): AddFormField
+  removeFormField(id: ID!): RemoveFormField
+  submitForm(input: SubmitFormInput!): SubmitForm
+  deleteSubmission(id: ID!): DeleteSubmission
+  createEnterprise(input: CreateEnterpriseInput!): CreateEnterprise
+  updateEnterprise(id: ID!, input: UpdateEnterpriseInput!): UpdateEnterprise
+  deleteEnterprise(id: ID!): DeleteEnterprise
+  createStage(enterpriseId: ID!, input: StageInput!): CreateStage
+  updateStage(id: ID!, input: StageInput!): UpdateStage
+  deleteStage(id: ID!): DeleteStage
+  createBatch(input: CreateBatchInput!): CreateBatch
+  updateBatch(currentStageId: ID, id: ID!, metadata: JSONString, notes: String, status: String): UpdateBatch
+  advanceBatchStage(batchId: ID!): AdvanceBatchStage
+  createCustomTemplate(input: CreateTemplateInput!): CreateCustomTemplate
+  register(input: RegisterInput!): AuthPayload
+  login(email: String!, password: String!): AuthPayload
+  verifyToken(token: String): Verify
+  refreshToken(refreshToken: String): Refresh
+  revokeToken(refreshToken: String): Revoke
+  updateProfile(input: UpdateProfileInput!): UpdateProfile
+  updateOrganization(input: UpdateOrganizationInput!): UpdateOrganization
+  inviteUser(input: InviteUserInput!): InviteUser
+  changePassword(newPassword: String!, oldPassword: String!): ChangePassword
+  deactivateUser(userId: ID!): DeactivateUser
+}
+
+type PairDevice {
+  device: DeviceType
+}
+
+input PairDeviceInput {
+  name: String!
+  deviceType: String!
+  enterpriseId: ID
+  model: String
+  firmwareVersion: String
+  location: String
+  config: JSONString
+}
+
+type UpdateDevice {
+  device: DeviceType
+}
+
+type UnpairDevice {
+  success: Boolean
+}
+
+"""Ingest a sensor reading; auto-runs automation rules on the metric."""
+type IngestSensorReading {
+  reading: SensorReadingType
+  alertsTriggered: Int
+}
+
+input SensorReadingInput {
+  deviceId: ID!
+  metric: String!
+  value: Float!
+  unit: String!
+  enterpriseId: ID
+}
+
+type CreateDroneFlight {
+  flight: DroneFlightType
+}
+
+input DroneFlightInput {
+  deviceId: ID
+  enterpriseId: ID
+  flightType: String
+  notes: String
+}
+
+type UpdateDroneFlight {
+  flight: DroneFlightType
+}
+
+type ReviewCameraEvent {
+  event: CameraEventType
+}
+
+type ResolveSecurityAlert {
+  alert: SecurityAlertType
+}
+
+type CreateWidget {
+  widget: DashboardWidgetType
+}
+
+input WidgetInput {
+  widgetType: String!
+  title: String!
+  dataSource: String!
+  widgetSize: String
+  widgetOrder: Int
+  isEnabled: Boolean
+  color: String
+  config: JSONString
+}
+
+type UpdateWidget {
+  widget: DashboardWidgetType
+}
+
+type DeleteWidget {
+  success: Boolean
+}
+
+type ReorderWidgets {
+  widgets: [DashboardWidgetType]
+}
+
+input WidgetOrderInput {
+  id: ID!
+  widgetOrder: Int!
+}
+
+type CreateReport {
+  report: ReportType
+}
+
+input ReportInput {
+  name: String!
+  reportType: String!
+  enterpriseId: ID
+  dateFrom: Date
+  dateTo: Date
+  parameters: JSONString
+  outputFormat: String
+}
+
+type GenerateRecommendations {
+  recommendations: [AIRecommendationType]
+  count: Int
+}
+
+type ActionRecommendation {
+  recommendation: AIRecommendationType
+}
+
+type DismissRecommendation {
+  success: Boolean
+}
+
+type CreateProductionRecord {
+  record: ProductionRecordType
+}
+
+input ProductionRecordInput {
+  enterpriseId: ID!
+  recordDate: Date!
+  recordType: String
+  data: JSONString!
+  batchId: ID
+  stageId: ID
+}
+
+type UpdateProductionRecord {
+  record: ProductionRecordType
+}
+
+type DeleteProductionRecord {
+  success: Boolean
+}
+
+type CreateInventoryItem {
+  item: InventoryItemType
+}
+
+input InventoryItemInput {
+  name: String!
+  category: String
+  sku: String
+  unit: String
+  currentStock: Float
+  reorderLevel: Float
+  unitCost: Float
+  supplier: String
+  notes: String
+  enterpriseId: ID
+}
+
+type UpdateInventoryItem {
+  item: InventoryItemType
+}
+
+type DeleteInventoryItem {
+  success: Boolean
+}
+
+type RecordTransaction {
+  transaction: InventoryTransactionType
+}
+
+input TransactionInput {
+  itemId: ID!
+  transactionType: String!
+  quantity: Float!
+  batchId: ID
+  unitCost: Float
+  reference: String
+  notes: String
+}
+
+type CreateAutomationRule {
+  rule: AutomationRuleType
+}
+
+input AutomationRuleInput {
+  name: String!
+  description: String
+  enterpriseId: ID
+  isEnabled: Boolean
+  conditionMetric: String!
+  conditionOperator: String!
+  conditionValue: Float!
+  actionType: String!
+  actionMessage: String!
+  actionAssignToId: ID
+  actionChannel: String
+  actionPriority: String
+  cooldownMinutes: Int
+}
+
+type UpdateAutomationRule {
+  rule: AutomationRuleType
+}
+
+type ToggleAutomationRule {
+  rule: AutomationRuleType
+}
+
+type DeleteAutomationRule {
+  success: Boolean
+}
+
+"""Manually evaluate a rule against a supplied metric value."""
+type TestAutomationRule {
+  triggered: Boolean
+  message: String
+  log: TriggerLogType
+}
+
+type ResolveAlert {
+  log: TriggerLogType
+}
+
+type CreateTask {
+  task: TaskType
+}
+
+input TaskInput {
+  title: String!
+  description: String
+  enterpriseId: ID
+  batchId: ID
+  priority: String
+  assignedToId: ID
+  dueDate: Date
+}
+
+type UpdateTask {
+  task: TaskType
+}
+
+type DeleteTask {
+  success: Boolean
+}
+
+type CreateKPI {
+  kpi: KPIDefinitionType
+}
+
+input KPIDefinitionInput {
+  name: String!
+  description: String
+  unit: String
+  aggregation: String
+  target: Float
+  warningThreshold: Float
+  criticalThreshold: Float
+  higherIsBetter: Boolean
+  icon: String
+  color: String
+  category: String
+  formula: String
+  enterpriseId: ID
+}
+
+type UpdateKPI {
+  kpi: KPIDefinitionType
+}
+
+type DeleteKPI {
+  success: Boolean
+}
+
+type RecordKPIValue {
+  kpiValue: KPIValueType
+}
+
+"""Evaluate a formula-based KPI from recent production records."""
+type CalculateKPI {
+  kpiValue: KPIValueType
+  computedValue: Float
+}
+
+type CreateCustomField {
+  customField: CustomFieldType
+}
+
+input CustomFieldInput {
+  name: String!
+  label: String!
+  fieldType: String!
+  enterpriseId: ID
+  isRequired: Boolean
+  options: JSONString
+  formula: String
+  unit: String
+  minValue: Float
+  maxValue: Float
+  defaultValue: String
+  sensorId: String
+  fieldOrder: Int
+}
+
+type UpdateCustomField {
+  customField: CustomFieldType
+}
+
+type DeleteCustomField {
+  success: Boolean
+}
+
+type CreateForm {
+  form: FormType
+}
+
+input FormInput {
+  name: String!
+  description: String
+  frequency: String
+  enterpriseId: ID
+  isActive: Boolean
+}
+
+type UpdateForm {
+  form: FormType
+}
+
+type DeleteForm {
+  success: Boolean
+}
+
+type AddFormField {
+  formField: FormFieldType
+}
+
+input FormFieldInput {
+  label: String!
+  fieldType: String!
+  isRequired: Boolean
+  options: JSONString
+  formula: String
+  unit: String
+  fieldOrder: Int
+  customFieldId: ID
+}
+
+type RemoveFormField {
+  success: Boolean
+}
+
+type SubmitForm {
+  submission: FormSubmissionType
+}
+
+input SubmitFormInput {
+  formId: ID!
+  data: JSONString!
+  batchId: ID
+  enterpriseId: ID
+  gpsLat: Float
+  gpsLng: Float
+  notes: String
+}
+
+type DeleteSubmission {
+  success: Boolean
+}
+
+type CreateEnterprise {
+  enterprise: EnterpriseType
+}
+
+input CreateEnterpriseInput {
+  name: String!
+  category: String!
+  productionType: String!
+  icon: String
+  color: String
+  description: String
+  batchUnit: String
+  templateId: String
+  settings: JSONString
+}
+
+type UpdateEnterprise {
+  enterprise: EnterpriseType
+}
+
+input UpdateEnterpriseInput {
+  name: String
+  icon: String
+  color: String
+  description: String
+  batchUnit: String
+  isActive: Boolean
+  settings: JSONString
+}
+
+type DeleteEnterprise {
+  success: Boolean
+}
+
+type CreateStage {
+  stage: EnterpriseStageType
+}
+
+input StageInput {
+  name: String!
+  stageOrder: Int
+  durationDays: Int
+  color: String
+  description: String
+  feedingRules: JSONString
+  healthChecks: JSONString
+  kpiTargets: JSONString
+  alerts: JSONString
+  requiredRecords: JSONString
+}
+
+type UpdateStage {
+  stage: EnterpriseStageType
+}
+
+type DeleteStage {
+  success: Boolean
+}
+
+type CreateBatch {
+  batch: EnterpriseBatchType
+}
+
+input CreateBatchInput {
+  enterpriseId: ID!
+  name: String!
+  batchNumber: String
+  quantity: Float!
+  unit: String
+  startDate: Date!
+  expectedEndDate: Date
+  notes: String
+  metadata: JSONString
+}
+
+type UpdateBatch {
+  batch: EnterpriseBatchType
+}
+
+type AdvanceBatchStage {
+  batch: EnterpriseBatchType
+  message: String
+}
+
+type CreateCustomTemplate {
+  template: EnterpriseTemplateType
+}
+
+input CreateTemplateInput {
+  id: String!
+  name: String!
+  category: String!
+  productionType: String!
+  icon: String
+  color: String
+  description: String
+  stages: JSONString
+  kpis: JSONString
+  forms: JSONString
+  tags: JSONString
+}
+
+type AuthPayload {
+  token: String
+  refreshToken: String
+  user: ProfileType
+}
+
+input RegisterInput {
+  email: String!
+  fullName: String!
+  password: String!
+  organizationName: String!
+  role: String
+  phone: String
+}
+
+type Verify {
+  payload: GenericScalar!
+}
+
+"""
+The `GenericScalar` scalar type represents a generic
+GraphQL scalar value that could be:
+String, Boolean, Int, Float, List or Object.
+"""
+scalar GenericScalar
+
+type Refresh {
+  payload: GenericScalar!
+  refreshExpiresIn: Int!
+  token: String!
+  refreshToken: String!
+}
+
+type Revoke {
+  revoked: Int!
+}
+
+type UpdateProfile {
+  profile: ProfileType
+}
+
+input UpdateProfileInput {
+  fullName: String
+  phone: String
+  avatarUrl: String
+  preferences: JSONString
+}
+
+type UpdateOrganization {
+  organization: OrganizationType
+}
+
+input UpdateOrganizationInput {
+  name: String
+  country: String
+  currency: String
+  logoUrl: String
+  settings: JSONString
+}
+
+type InviteUser {
+  profile: ProfileType
+}
+
+input InviteUserInput {
+  email: String!
+  fullName: String!
+  role: String!
+  phone: String
+}
+
+type ChangePassword {
+  success: Boolean
+  message: String
+}
+
+type DeactivateUser {
+  success: Boolean
+}
