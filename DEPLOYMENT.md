@@ -1,68 +1,71 @@
 # AgroNexus — Deployment Guide
 
-Step-by-step guide to deploy AgroNexus on Google Cloud Platform (GKE + Cloud SQL + GCS).
+Full step-by-step guide to deploy AgroNexus on Google Cloud Platform.
+
+- **GCP Project:** `farming`
+- **Domain Registrar:** Spaceship
+- **Backend:** Django + Gunicorn on GKE (separate deployment)
+- **Frontend:** React/Nginx on GKE (separate deployment)
+- **Mobile:** Code-only — not deployed (EAS Build when ready)
 
 ---
 
 ## Architecture
 
 ```
-Internet → GKE Ingress (HTTPS) → Frontend (nginx) / Backend (Django/gunicorn)
-                                         ↓                     ↓
-                                   Cloud Storage (GCS)   Cloud SQL (PostgreSQL 15)
-                                                              ↑
-                                                       Cloud SQL Auth Proxy (sidecar)
-                                                              ↑
-                                                     Celery Worker + Beat (same image)
-                                                              ↑
-                                                         Redis (in-cluster)
+Spaceship DNS (A record → Static IP)
+        ↓
+GKE Ingress (HTTPS — GKE ManagedCertificate auto-provisions SSL)
+        ↓                              ↓
+agronexus-frontend (nginx)     agronexus-backend (Django/gunicorn)
+                                       ↓                    ↓
+                               Cloud SQL Proxy        GCS Media Bucket
+                               (PostgreSQL 15)        (agronexus-media)
+                                       ↑
+                             Celery Worker + Beat
+                                       ↑
+                                 Redis (in-cluster)
 ```
 
 ---
 
 ## Prerequisites
 
-Install these on your machine before running anything:
-
 ```bash
-# 1. Google Cloud SDK
-# https://cloud.google.com/sdk/docs/install
+# 1. Google Cloud SDK — https://cloud.google.com/sdk/docs/install
 gcloud --version
 
 # 2. kubectl
-gcloud components install kubectl
+gcloud components install kubectl gke-gcloud-auth-plugin
 
-# 3. Docker Desktop
+# 3. Docker Desktop — https://www.docker.com/products/docker-desktop
 docker --version
-
-# 4. GitHub CLI (optional, for repo setup)
-gh --version
 ```
 
 ---
 
-## Step 1 — GCP Project Setup
+## Step 1 — Create the GCP Project
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project.
-2. Enable billing on the project.
-3. Note your **Project ID** (e.g. `agronexus-prod-123456`).
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Click **New Project**
+3. Set **Project name** = `farming`, **Project ID** = `farming`
+4. Enable billing on the project
+5. Authenticate locally:
 
 ```bash
 gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
+gcloud config set project farming
 ```
 
 ---
 
 ## Step 2 — Edit deploy.sh
 
-Open `deploy.sh` and set your values at the top:
+Open `deploy.sh`. The PROJECT_ID is already set to `farming`. Update:
 
 ```bash
-PROJECT_ID="your-gcp-project-id"    # from Step 1
-REGION="us-central1"                # pick the closest GCP region
-DOMAIN="yourdomain.com"             # your real domain
-API_DOMAIN="api.yourdomain.com"     # subdomain for the backend API
+DOMAIN="yourdomain.com"       # your Spaceship domain, e.g. agronexus.io
+API_DOMAIN="api.yourdomain.com"   # e.g. api.agronexus.io
 ```
 
 ---
@@ -74,74 +77,78 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-This script (takes ~10 minutes) will:
+This takes **10–15 minutes** and does:
 
-| Step | What it does |
+| Step | What happens |
 |------|-------------|
-| 1 | Enable all required GCP APIs |
-| 2 | Create Artifact Registry Docker repository |
-| 3 | Provision Cloud SQL PostgreSQL 15 (db-g1-small, 20GB SSD) |
-| 4 | Create GCS media bucket |
-| 5 | Create GCP service account + IAM roles (Cloud SQL, GCS) |
-| 6 | Create GKE Standard cluster (e2-standard-2, 1-4 nodes, Workload Identity) |
-| 7 | Reserve global static IP, bind Workload Identity |
-| 8 | Build and push backend + frontend Docker images |
-| 9 | Apply all Kubernetes manifests |
-| 10 | Run Django migrations |
+| 1 | Enables GCP APIs (GKE, Cloud SQL, Artifact Registry, Cloud Build, GCS) |
+| 2 | Creates Artifact Registry Docker repo `agronexus` |
+| 3 | Provisions Cloud SQL PostgreSQL 15 (db-g1-small, 20 GB SSD, 7-day backups) |
+| 4 | Creates GCS media bucket `agronexus-media-prod` |
+| 5 | Creates GCP service account with Cloud SQL + GCS IAM roles |
+| 6 | Creates GKE Standard cluster (e2-standard-2, 1–4 nodes, Workload Identity) + reserves static IP |
+| 7 | Builds & pushes backend + frontend Docker images |
+| 8 | Substitutes real values into all k8s YAML files |
+| 9 | Applies all Kubernetes manifests + creates K8s secrets |
+| 10 | Runs Django migrations inside the backend pod |
 
-> ⚠ **Save the `DB_PASSWORD`** printed by the script — it's generated once and not shown again.
+> ⚠️ **Save the `DB_PASSWORD`** the script prints — it's generated once and never shown again.
 
 ---
 
-## Step 4 — Point DNS Records
+## Step 4 — Set DNS Records on Spaceship
 
 After Step 3, get your static IP:
 
 ```bash
-kubectl get ingress -n agronexus
-# or
 gcloud compute addresses describe agronexus-ip --global --format="get(address)"
 ```
 
-Create two DNS `A` records at your domain registrar:
+**Log in to [spaceship.com](https://www.spaceship.com) → Domains → your domain → DNS**
 
-| Name | Type | Value |
-|------|------|-------|
-| `@` (or `yourdomain.com`) | A | `<STATIC_IP>` |
-| `api` | A | `<STATIC_IP>` |
+Add these two records:
 
-The GKE ManagedCertificate will auto-provision SSL — takes **10–15 minutes** after DNS propagates.
+| Type | Host / Name | Value | TTL |
+|------|------------|-------|-----|
+| A | `@` (root domain) | `<STATIC_IP>` | 300 |
+| A | `api` | `<STATIC_IP>` | 300 |
 
----
+> DNS propagation takes **5–30 minutes**. GKE's ManagedCertificate then auto-provisions SSL — allow **10–15 more minutes** for HTTPS to become active.
 
-## Step 5 — Update Secrets
-
-After first deploy, replace the placeholder API keys:
-
+Check SSL status:
 ```bash
-# Get the current secret (to see what's there)
-kubectl get secret agronexus-secrets -n agronexus -o yaml
-
-# Update Anthropic API key
-kubectl patch secret agronexus-secrets -n agronexus \
-  -p '{"data":{"ANTHROPIC_API_KEY":"'$(echo -n "sk-ant-YOUR_KEY" | base64)'"}}'
-
-# Update SendGrid API key
-kubectl patch secret agronexus-secrets -n agronexus \
-  -p '{"data":{"EMAIL_HOST_PASSWORD":"'$(echo -n "SG.YOUR_KEY" | base64)'"}}'
+kubectl describe managedcertificate agronexus-cert -n agronexus
+# Status should eventually show: Active
 ```
 
 ---
 
-## Step 6 — Create the Platform Admin User
+## Step 5 — Update API Keys in the K8s Secret
 
-Run the superuser job (edit the values first):
+The deploy script puts placeholder values for Anthropic and email. Replace them:
 
 ```bash
-# Edit the job to set your admin email, name, and password
-nano k8s/jobs/migrate.yaml   # find DJANGO_SUPERUSER_* env vars
+# Anthropic API key (for the AI intelligence engine)
+kubectl patch secret agronexus-secrets -n agronexus \
+  -p '{"data":{"ANTHROPIC_API_KEY":"'$(echo -n "sk-ant-YOUR_KEY_HERE" | base64 -w0)'"}}'
 
-# Apply it
+# SendGrid API key (for email notifications)
+kubectl patch secret agronexus-secrets -n agronexus \
+  -p '{"data":{"EMAIL_HOST_PASSWORD":"'$(echo -n "SG.YOUR_KEY_HERE" | base64 -w0)'"}}'
+```
+
+---
+
+## Step 6 — Create the Platform Admin Account
+
+Edit the superuser job with your real credentials:
+
+```bash
+# Open the job file and find DJANGO_SUPERUSER_* env vars
+nano k8s/jobs/migrate.yaml
+# Set DJANGO_SUPERUSER_EMAIL, DJANGO_SUPERUSER_FULL_NAME, DJANGO_SUPERUSER_PASSWORD
+
+# Run it
 kubectl delete job agronexus-createsuperuser -n agronexus --ignore-not-found
 kubectl apply -f k8s/jobs/migrate.yaml
 kubectl logs -f job/agronexus-createsuperuser -n agronexus
@@ -149,62 +156,78 @@ kubectl logs -f job/agronexus-createsuperuser -n agronexus
 
 ---
 
-## Step 7 — Set Up CI/CD (GitHub Actions)
+## Step 7 — Set Up GitHub Actions CI/CD
 
-The `.github/workflows/deploy.yml` workflow deploys automatically on every push to `main`.
+Every push to `main` auto-deploys. You need to add secrets to **each GitHub repo**.
 
-### Required GitHub Secrets
+### Required Secrets
 
-Go to your repo → **Settings → Secrets and variables → Actions** and add:
+Add these in **GitHub → repo → Settings → Secrets and variables → Actions**:
 
-| Secret | Description |
-|--------|-------------|
-| `GCP_PROJECT_ID` | Your GCP Project ID |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | WIF provider (see below) |
-| `GCP_SERVICE_ACCOUNT` | `github-deploy@YOUR_PROJECT_ID.iam.gserviceaccount.com` |
-| `VITE_API_URL` | `https://api.yourdomain.com/graphql/` (frontend only) |
+#### farm_backend repo secrets
+| Secret | Value |
+|--------|-------|
+| `GCP_PROJECT_ID` | `farming` |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | (see WIF setup below) |
+| `GCP_SERVICE_ACCOUNT` | `github-deploy@farming.iam.gserviceaccount.com` |
 
-### Set up Workload Identity Federation for GitHub Actions
+#### farm_frontend repo secrets
+| Secret | Value |
+|--------|-------|
+| `GCP_PROJECT_ID` | `farming` |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | (same as above) |
+| `GCP_SERVICE_ACCOUNT` | `github-deploy@farming.iam.gserviceaccount.com` |
+| `VITE_API_URL` | `https://api.yourdomain.com/graphql/` |
+
+### Set up Workload Identity Federation (keyless auth — no JSON keys)
+
+Run this once to let GitHub Actions authenticate to GCP without storing credentials:
 
 ```bash
-PROJECT_ID="your-gcp-project-id"
+PROJECT_ID="farming"
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="get(projectNumber)")
 
-# Create a WIF pool for GitHub
+# 1. Create WIF pool
 gcloud iam workload-identity-pools create "github-pool" \
-  --project=$PROJECT_ID \
-  --location="global" \
+  --project=$PROJECT_ID --location="global" \
   --display-name="GitHub Actions Pool"
 
-# Create a WIF provider
+# 2. Create OIDC provider
 gcloud iam workload-identity-pools providers create-oidc "github-provider" \
-  --project=$PROJECT_ID \
-  --location="global" \
+  --project=$PROJECT_ID --location="global" \
   --workload-identity-pool="github-pool" \
   --display-name="GitHub provider" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
   --issuer-uri="https://token.actions.githubusercontent.com"
 
-# Create a deploy service account
+# 3. Create a deploy service account
 gcloud iam service-accounts create github-deploy \
-  --project=$PROJECT_ID \
-  --display-name="GitHub Actions Deploy SA"
+  --project=$PROJECT_ID --display-name="GitHub Actions Deploy SA"
 
-# Grant it required roles
+# 4. Grant it GKE and Artifact Registry permissions
 for ROLE in roles/container.developer roles/artifactregistry.writer; do
   gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:github-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role=$ROLE --quiet
 done
 
-# Allow GitHub to impersonate this SA
+# 5. Allow backend repo to use this SA
 gcloud iam service-accounts add-iam-policy-binding \
   "github-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --project=$PROJECT_ID \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/mule720/farm_backend"
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/mule720/farm_backend" \
+  --project=$PROJECT_ID
 
-# Get the WIF provider name (put this in GCP_WORKLOAD_IDENTITY_PROVIDER secret)
+# 6. Allow frontend repo to use this SA
+gcloud iam service-accounts add-iam-policy-binding \
+  "github-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/mule720/farm_frontend" \
+  --project=$PROJECT_ID
+
+# 7. Print the provider value to paste into GitHub secrets
+echo ""
+echo "GCP_WORKLOAD_IDENTITY_PROVIDER value (paste into BOTH repos):"
 echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 ```
 
@@ -213,74 +236,56 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-p
 ## Useful Commands
 
 ```bash
-# View all pods
+# Check all pods
 kubectl get pods -n agronexus
 
-# View logs
+# View backend logs
 kubectl logs -f deployment/agronexus-backend -n agronexus
-kubectl logs -f deployment/agronexus-celery-worker -n agronexus
 
-# Run a Django shell in the cluster
-kubectl exec -it deployment/agronexus-backend -n agronexus -c backend -- python manage.py shell
+# Run a Django management command in the cluster
+kubectl exec -it deployment/agronexus-backend -n agronexus -c backend \
+  -- python manage.py shell
 
-# Run a migration manually
+# Re-run migrations manually
 kubectl delete job agronexus-migrate -n agronexus --ignore-not-found
 kubectl apply -f k8s/jobs/migrate.yaml
 kubectl wait job/agronexus-migrate --for=condition=complete --timeout=180s -n agronexus
 
-# Scale backend pods
+# Scale backend
 kubectl scale deployment agronexus-backend --replicas=3 -n agronexus
 
-# Check ingress and TLS status
-kubectl get ingress -n agronexus
+# Check SSL certificate status
 kubectl describe managedcertificate agronexus-cert -n agronexus
 
-# Check HPA status
+# Check HPA (auto-scaling)
 kubectl get hpa -n agronexus
+
+# Get the external IP
+kubectl get ingress agronexus-ingress -n agronexus
 ```
 
 ---
 
-## Cost Estimate (10 heavy users, ~$320/month)
+## Cost Estimate (10 heavy users, ~$320/month on GCP `farming` project)
 
-| Service | Config | Est. Cost |
-|---------|--------|-----------|
-| GKE Standard cluster | 2× e2-standard-2 (auto 1-4) | ~$100/mo |
-| Cloud SQL PostgreSQL | db-g1-small, 20GB SSD | ~$30/mo |
-| Cloud Load Balancer | Global HTTP(S) | ~$20/mo |
-| Artifact Registry | ~5GB images | ~$5/mo |
-| Cloud Storage (GCS) | 10GB media | ~$2/mo |
-| Cloud Build | ~30 builds/mo | ~$5/mo |
-| Networking | Egress | ~$10/mo |
-| **Buffer** | | ~$148/mo |
+| Service | Config | Est. Monthly |
+|---------|--------|-------------|
+| GKE cluster | 2× e2-standard-2 (auto-scales 1–4) | ~$100 |
+| Cloud SQL | PostgreSQL 15, db-g1-small, 20 GB SSD | ~$30 |
+| Cloud Load Balancer | Global HTTPS | ~$20 |
+| Artifact Registry | ~5 GB Docker images | ~$5 |
+| GCS (media bucket) | 10 GB uploads | ~$2 |
+| Cloud Build | ~30 builds/month | ~$5 |
+| Networking / egress | | ~$10 |
+| Buffer | | ~$148 |
 | **Total** | | **~$320/mo** |
 
 ---
 
-## Repository Structure (farm_backend)
+## Repository Overview
 
-```
-farm_backend/
-├── apps/               # 21 Django apps
-├── config/             # Django settings, urls, schema, wsgi
-├── k8s/                # Kubernetes manifests
-│   ├── namespace.yaml
-│   ├── configmap.yaml
-│   ├── secrets.yaml      (reference only — real values in K8s)
-│   ├── serviceaccount.yaml
-│   ├── ingress.yaml
-│   ├── hpa.yaml
-│   ├── backend/
-│   ├── celery/
-│   ├── frontend/
-│   ├── redis/
-│   └── jobs/
-│       └── migrate.yaml
-├── .github/workflows/  # GitHub Actions CI/CD
-├── Dockerfile
-├── gunicorn.conf.py
-├── cloudbuild.yaml     # Google Cloud Build CI/CD
-├── deploy.sh           # First-time GCP setup script
-├── requirements.txt
-└── DEPLOYMENT.md       # This file
-```
+| Repo | Deploys to | CI/CD |
+|------|-----------|-------|
+| [farm_backend](https://github.com/mule720/farm_backend) | GKE `agronexus-backend` + Celery | GitHub Actions → push image → rollout |
+| [farm_frontend](https://github.com/mule720/farm_frontend) | GKE `agronexus-frontend` | GitHub Actions → push image → rollout |
+| [farm_mobile](https://github.com/mule720/farm_mobile) | Not deployed (EAS Build when ready) | TypeScript check only |

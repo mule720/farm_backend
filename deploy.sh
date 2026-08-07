@@ -18,10 +18,10 @@
 set -euo pipefail
 
 # ── EDIT THESE BEFORE RUNNING ────────────────────────────────────────────────
-PROJECT_ID="your-gcp-project-id"          # e.g. agronexus-prod-123456
+PROJECT_ID="farming"                       # GCP project ID
 REGION="us-central1"                       # GCP region
 CLUSTER="agronexus-cluster"               # GKE cluster name
-DOMAIN="yourdomain.com"                   # e.g. agronexus.io
+DOMAIN="yourdomain.com"                   # your Spaceship domain e.g. agronexus.io
 API_DOMAIN="api.yourdomain.com"           # e.g. api.agronexus.io
 REPO="agronexus"                          # Artifact Registry repo name
 
