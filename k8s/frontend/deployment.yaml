@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/frontend:latest
+          image: us-central1-docker.pkg.dev/agrinexus-farm/agronexus/frontend:latest
           ports:
             - containerPort: 80
           resources:

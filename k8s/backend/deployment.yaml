@@ -19,7 +19,7 @@ spec:
       containers:
         # ── Main Django container ──────────────────────────────────
         - name: backend
-          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          image: us-central1-docker.pkg.dev/agrinexus-farm/agronexus/backend:latest
           ports:
             - containerPort: 8000
           envFrom:
@@ -54,7 +54,7 @@ spec:
           args:
             - "--structured-logs"
             - "--port=5432"
-            - "PROJECT_ID:REGION:agronexus-db"   # Replace with your instance
+            - "agrinexus-farm:us-central1:agronexus-db"   # Replace with your instance
           resources:
             requests:
               cpu: "50m"

@@ -19,7 +19,7 @@ spec:
       serviceAccountName: agronexus-sa
       containers:
         - name: celery-beat
-          image: REGION-docker.pkg.dev/PROJECT_ID/agronexus/backend:latest
+          image: us-central1-docker.pkg.dev/agrinexus-farm/agronexus/backend:latest
           command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler=django_celery_beat.schedulers:DatabaseScheduler"]
           envFrom:
             - configMapRef:
@@ -39,7 +39,7 @@ spec:
           args:
             - "--structured-logs"
             - "--port=5432"
-            - "PROJECT_ID:REGION:agronexus-db"
+            - "agrinexus-farm:us-central1:agronexus-db"
           resources:
             requests:
               cpu: "50m"
