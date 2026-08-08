@@ -18,7 +18,7 @@
 set -euo pipefail
 
 # ── EDIT THESE BEFORE RUNNING ────────────────────────────────────────────────
-PROJECT_ID="farming"                       # GCP project ID
+PROJECT_ID="agrinexus-farm"                       # GCP project ID
 REGION="us-central1"                       # GCP region
 CLUSTER="agronexus-cluster"               # GKE cluster name
 DOMAIN="agrinexus.com"                    # Spaceship domain

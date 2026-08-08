@@ -1,6 +1,6 @@
 # AgroNexus — Backend
 
-Django 5.1 + GraphQL API for the AgroNexus smart farming management platform.
+Django 5.1 + GraphQL API for the AgroNexus smart agrinexus-farm management platform.
 
 ## Tech Stack
 

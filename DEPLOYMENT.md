@@ -2,7 +2,7 @@
 
 Full step-by-step guide to deploy AgroNexus on Google Cloud Platform.
 
-- **GCP Project:** `farming`
+- **GCP Project:** `agrinexus-farm`
 - **Domain Registrar:** Spaceship
 - **Backend:** Django + Gunicorn on GKE (separate deployment)
 - **Frontend:** React/Nginx on GKE (separate deployment)
@@ -48,20 +48,20 @@ docker --version
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Click **New Project**
-3. Set **Project name** = `farming`, **Project ID** = `farming`
+3. Set **Project name** = `agrinexus-farm`, **Project ID** = `agrinexus-farm`
 4. Enable billing on the project
 5. Authenticate locally:
 
 ```bash
 gcloud auth login
-gcloud config set project farming
+gcloud config set project agrinexus-farm
 ```
 
 ---
 
 ## Step 2 — Edit deploy.sh
 
-Open `deploy.sh`. The PROJECT_ID is already set to `farming`. Update:
+Open `deploy.sh`. The PROJECT_ID is already set to `agrinexus-farm`. Update:
 
 ```bash
 DOMAIN="agrinexus.com"           # already set
@@ -168,16 +168,16 @@ Add these in **GitHub → repo → Settings → Secrets and variables → Action
 #### farm_backend repo secrets
 | Secret | Value |
 |--------|-------|
-| `GCP_PROJECT_ID` | `farming` |
+| `GCP_PROJECT_ID` | `agrinexus-farm` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | (see WIF setup below) |
-| `GCP_SERVICE_ACCOUNT` | `github-deploy@farming.iam.gserviceaccount.com` |
+| `GCP_SERVICE_ACCOUNT` | `github-deploy@agrinexus-farm.iam.gserviceaccount.com` |
 
 #### farm_frontend repo secrets
 | Secret | Value |
 |--------|-------|
-| `GCP_PROJECT_ID` | `farming` |
+| `GCP_PROJECT_ID` | `agrinexus-farm` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | (same as above) |
-| `GCP_SERVICE_ACCOUNT` | `github-deploy@farming.iam.gserviceaccount.com` |
+| `GCP_SERVICE_ACCOUNT` | `github-deploy@agrinexus-farm.iam.gserviceaccount.com` |
 | `VITE_API_URL` | `https://api.agrinexus.com/graphql/` |
 
 ### Set up Workload Identity Federation (keyless auth — no JSON keys)
@@ -185,7 +185,7 @@ Add these in **GitHub → repo → Settings → Secrets and variables → Action
 Run this once to let GitHub Actions authenticate to GCP without storing credentials:
 
 ```bash
-PROJECT_ID="farming"
+PROJECT_ID="agrinexus-farm"
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="get(projectNumber)")
 
 # 1. Create WIF pool
@@ -267,7 +267,7 @@ kubectl get ingress agronexus-ingress -n agronexus
 
 ---
 
-## Cost Estimate (10 heavy users, ~$320/month on GCP `farming` project)
+## Cost Estimate (10 heavy users, ~$320/month on GCP `agrinexus-farm` project)
 
 | Service | Config | Est. Monthly |
 |---------|--------|-------------|

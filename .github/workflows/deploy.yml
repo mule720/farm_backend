@@ -11,7 +11,7 @@ env:
   CLUSTER: agronexus-cluster
   REPO: agronexus
   IMAGE_BACKEND: backend
-  # GCP_PROJECT_ID must be set as a GitHub secret (value: farming)
+  # GCP_PROJECT_ID must be set as a GitHub secret (value: agrinexus-farm)
 
 jobs:
   # ── Lint & test ────────────────────────────────────────────────────────────
