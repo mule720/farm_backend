@@ -64,8 +64,8 @@ gcloud config set project agrinexus-farm
 Open `deploy.sh`. The PROJECT_ID is already set to `agrinexus-farm`. Update:
 
 ```bash
-DOMAIN="agrinexus.com"           # already set
-API_DOMAIN="api.agrinexus.com"   # already set
+DOMAIN="agrinuxes.com"           # already set
+API_DOMAIN="api.agrinuxes.com"   # already set
 ```
 
 ---
@@ -110,8 +110,8 @@ Add these two records:
 
 | Type | Host / Name | Value | TTL |
 |------|------------|-------|-----|
-| A | `@` (root — agrinexus.com) | `<STATIC_IP>` | 300 |
-| CNAME | `www` | `agrinexus.com` | 300 |
+| A | `@` (root — agrinuxes.com) | `<STATIC_IP>` | 300 |
+| CNAME | `www` | `agrinuxes.com` | 300 |
 | A | `api` | `<STATIC_IP>` | 300 |
 
 > DNS propagation takes **5–30 minutes**. GKE's ManagedCertificate then auto-provisions SSL — allow **10–15 more minutes** for HTTPS to become active.
@@ -178,7 +178,7 @@ Add these in **GitHub → repo → Settings → Secrets and variables → Action
 | `GCP_PROJECT_ID` | `agrinexus-farm` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | (same as above) |
 | `GCP_SERVICE_ACCOUNT` | `github-deploy@agrinexus-farm.iam.gserviceaccount.com` |
-| `VITE_API_URL` | `https://api.agrinexus.com/graphql/` |
+| `VITE_API_URL` | `https://api.agrinuxes.com/graphql/` |
 
 ### Set up Workload Identity Federation (keyless auth — no JSON keys)
 
