@@ -6,7 +6,7 @@ metadata:
 data:
   DEBUG: "False"
   DJANGO_SETTINGS_MODULE: "config.settings"
-  ALLOWED_HOSTS: "api.agrinuxes.com,agronexus-backend,10.0.0.0/8"
+  ALLOWED_HOSTS: "api.agrinuxes.com,agronexus-backend,*"
   CORS_ALLOWED_ORIGINS: "https://agrinuxes.com,https://www.agrinuxes.com"
   REDIS_URL: "redis://agronexus-redis:6379/0"
   GCS_MEDIA_BUCKET: "agronexus-media-prod"
