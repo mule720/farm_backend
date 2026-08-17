@@ -38,12 +38,12 @@ class ProfileType(DjangoObjectType):
 # ─── Inputs ──────────────────────────────────────────────────────────────────
 
 class RegisterInput(graphene.InputObjectType):
-    email = graphene.String(required=True)
+    email = graphene.String()          # optional — auto-generated from phone if omitted
     full_name = graphene.String(required=True)
     password = graphene.String(required=True)
     organization_name = graphene.String(required=True)
     role = graphene.String()
-    phone = graphene.String()
+    phone = graphene.String(required=True)  # mandatory
 
 
 class UpdateProfileInput(graphene.InputObjectType):
@@ -62,10 +62,10 @@ class UpdateOrganizationInput(graphene.InputObjectType):
 
 
 class InviteUserInput(graphene.InputObjectType):
-    email = graphene.String(required=True)
+    email = graphene.String()           # optional — auto-generated from phone if omitted
     full_name = graphene.String(required=True)
     role = graphene.String(required=True)
-    phone = graphene.String()
+    phone = graphene.String(required=True)  # mandatory
     password = graphene.String()  # optional — director can set it; auto-generated if omitted
 
 
@@ -135,8 +135,21 @@ class Register(graphene.Mutation):
         from graphql_jwt.shortcuts import get_token
         from graphql_jwt.refresh_token.shortcuts import create_refresh_token
 
-        if Profile.objects.filter(email=input.email).exists():
+        # Phone is mandatory
+        phone = (input.get('phone') or '').strip()
+        if not phone:
+            raise Exception('Phone number is required.')
+
+        # Email is optional — auto-generate from phone if not provided
+        email = (input.get('email') or '').strip()
+        if not email:
+            clean_phone = re.sub(r'[^0-9]', '', phone)
+            email = f'{clean_phone}@agrinuxes.local'
+
+        if Profile.objects.filter(email=email).exists():
             raise Exception('A user with this email already exists.')
+        if Profile.objects.filter(phone=phone).exists():
+            raise Exception('A user with this phone number already exists.')
 
         selected_role = (input.role or 'director').strip()
         allowed_roles = {choice[0] for choice in Profile.ROLE_CHOICES}
@@ -152,10 +165,10 @@ class Register(graphene.Mutation):
 
         org = Organization.objects.create(name=input.organization_name, slug=slug)
         user = Profile.objects.create_user(
-            email=input.email,
+            email=email,
             full_name=input.full_name,
             password=input.password,
-            phone=input.phone or '',
+            phone=phone,
             organization=org,
             role=selected_role,
         )
@@ -172,12 +185,26 @@ class Login(graphene.Mutation):
     Output = AuthPayload
 
     def mutate(self, info, email, password):
+        import re
         from graphql_jwt.shortcuts import get_token
         from graphql_jwt.refresh_token.shortcuts import create_refresh_token
 
-        user = authenticate(email=email, password=password)
+        login_email = email.strip()
+
+        # If the identifier looks like a phone number (digits/+/spaces), try the
+        # auto-generated email pattern first, then fall back to direct match.
+        if not '@' in login_email:
+            clean = re.sub(r'[^0-9]', '', login_email)
+            try:
+                phone_user = Profile.objects.get(phone=login_email)
+                login_email = phone_user.email
+            except Profile.DoesNotExist:
+                # Try the auto-generated email pattern
+                login_email = f'{clean}@agrinuxes.local'
+
+        user = authenticate(email=login_email, password=password)
         if not user:
-            raise Exception('Invalid email or password.')
+            raise Exception('Invalid phone/email or password.')
         if not user.is_active:
             raise Exception('Account is disabled.')
         token = get_token(user)
@@ -230,14 +257,33 @@ class InviteUser(graphene.Mutation):
     temp_password = graphene.String()
 
     def mutate(self, info, input):
+        import re
         import random
+        from django.core.mail import send_mail
+        from django.conf import settings as django_settings
+        from apps.notifications.utils import notify
+
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
         if user.role not in ('director', 'saas_admin'):
             raise Exception('Permission denied — only Directors can add employees.')
-        if Profile.objects.filter(email=input.email).exists():
+
+        # Phone is mandatory
+        phone = (input.get('phone') or '').strip()
+        if not phone:
+            raise Exception('Phone number is required.')
+        if Profile.objects.filter(phone=phone, organization=user.organization).exists():
+            raise Exception('A user with this phone number already exists in your organisation.')
+
+        # Email is optional — auto-generate from phone if not provided
+        email = (input.get('email') or '').strip()
+        if not email:
+            clean_phone = re.sub(r'[^0-9]', '', phone)
+            email = f'{clean_phone}@agrinuxes.local'
+        if Profile.objects.filter(email=email).exists():
             raise Exception('A user with this email already exists.')
+
         allowed_roles = {choice[0] for choice in Profile.ROLE_CHOICES}
         role = (input.role or 'farmhand').strip()
         if role not in allowed_roles:
@@ -250,18 +296,57 @@ class InviteUser(graphene.Mutation):
                 raise Exception('Password must be at least 6 characters.')
             pwd = custom_pwd
         else:
-            # Exclude visually ambiguous characters: 0,1,I,O,l,o
             chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
             pwd = ''.join(random.choices(chars, k=10))
 
         new_user = Profile.objects.create_user(
-            email=input.email,
+            email=email,
             full_name=input.full_name,
             password=pwd,
             role=role,
-            phone=input.phone or '',
+            phone=phone,
             organization=user.organization,
         )
+
+        # ── In-app notification to new user ───────────────────────────────────
+        login_identifier = phone if email.endswith('@agrinuxes.local') else email
+        notify(
+            new_user,
+            title='Welcome to Agrinuxes!',
+            message=(
+                f'Your account has been created by {user.full_name}.\n'
+                f'Login: {login_identifier}\n'
+                f'Temporary password: {pwd}\n'
+                f'Please change your password after first login.'
+            ),
+            category='system',
+            priority='info',
+            action_url='/settings',
+        )
+
+        # ── Email notification (best-effort — skip if SMTP not configured) ────
+        has_real_email = not email.endswith('@agrinuxes.local')
+        if has_real_email:
+            try:
+                send_mail(
+                    subject=f'Your Agrinuxes account — {user.organization.name}',
+                    message=(
+                        f'Hello {input.full_name},\n\n'
+                        f'{user.full_name} has created an account for you on Agrinuxes.\n\n'
+                        f'Organisation: {user.organization.name}\n'
+                        f'Role: {role.replace("_", " ").title()}\n'
+                        f'Login (email): {email}\n'
+                        f'Temporary password: {pwd}\n\n'
+                        f'Please sign in and change your password immediately.\n\n'
+                        f'— The Agrinuxes Team'
+                    ),
+                    from_email=getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'noreply@agrinuxes.com'),
+                    recipient_list=[email],
+                    fail_silently=True,
+                )
+            except Exception:
+                pass  # Never block user creation over email failure
+
         return InviteUser(profile=new_user, temp_password=pwd)
 
 
