@@ -99,25 +99,52 @@ _RANGES = {
     'feed_consumed_kg': (0,      50000,  'Feed consumed (kg)'),
     'water_l':          (0,     200000,  'Water (L)'),
     'water_consumed_l': (0,     200000,  'Water (L)'),
-    'avg_weight_kg':    (0.001,   300,   'Average weight (kg)'),
-    'weight_kg':        (0.001,   300,   'Weight (kg)'),
+    'avg_weight_kg':    (0.001,   350,   'Average weight (kg)'),
+    'weight_kg':        (0.001,   350,   'Weight (kg)'),
     'quantity':         (0,     200000,  'Quantity'),
     'eggs_count':       (0,     500000,  'Egg count'),
     'temperature_c':    (-10,    60,     'Temperature (°C)'),
     'humidity_pct':     (0,     100,     'Humidity (%)'),
 }
 
+# Species-specific weight limits — keyed by enterprise_type value from Enterprise model
+_WEIGHT_LIMITS = {
+    'broilers':        (0.01, 5),
+    'village_chicken': (0.01, 5),
+    'poultry':         (0.01, 5),
+    'ducks':           (0.01, 6),
+    'fish':            (0.001, 5),
+    'piggery':         (0.5, 350),
+    'goats':           (1, 120),
+    'sheep':           (1, 150),
+}
 
-def _validate_data(data: dict):
+
+def _validate_data(data: dict, enterprise_type: str = ''):
     """Raise Exception if any data field is outside its expected range."""
+    etype = (enterprise_type or '').lower().replace(' ', '_')
     for key, value in data.items():
         k = key.lower()
-        if k in _RANGES and value is not None:
+        if value is None:
+            continue
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            continue
+
+        # Species-specific weight validation
+        if k in ('avg_weight_kg', 'weight_kg') and etype and etype in _WEIGHT_LIMITS:
+            lo, hi = _WEIGHT_LIMITS[etype]
+            if not (lo <= v <= hi):
+                raise Exception(
+                    f'Average weight {v} kg is outside the expected range for '
+                    f'{enterprise_type} ({lo}–{hi} kg). '
+                    f'Please check the figure — did you enter grams instead of kg?'
+                )
+            continue  # already validated
+
+        if k in _RANGES:
             lo, hi, label = _RANGES[k]
-            try:
-                v = float(value)
-            except (TypeError, ValueError):
-                continue
             if not (lo <= v <= hi):
                 raise Exception(
                     f'{label} value {v} is out of the expected range ({lo}–{hi}). '
@@ -138,7 +165,15 @@ class CreateProductionRecord(graphene.Mutation):
             raise Exception('Not authenticated')
 
         data = input.data or {}
-        _validate_data(data)
+        # Look up enterprise type for species-specific weight validation
+        try:
+            from apps.enterprises.models import Enterprise
+            ent = Enterprise.objects.get(id=input.enterprise_id, organization=user.organization)
+            _validate_data(data, enterprise_type=ent.enterprise_type or '')
+        except Exception as e:
+            if 'range' in str(e).lower() or 'weight' in str(e).lower() or 'expected' in str(e).lower():
+                raise  # re-raise validation errors
+            _validate_data(data)  # fall back to generic check if enterprise lookup fails
 
         record_type = input.get('record_type', 'daily')
         batch_id = input.get('batch_id')
@@ -197,7 +232,14 @@ class UpdateProductionRecord(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
-        _validate_data(data if isinstance(data, dict) else {})
+        try:
+            from apps.enterprises.models import Enterprise
+            ent = Enterprise.objects.get(id=record.enterprise_id, organization=user.organization)
+            _validate_data(data if isinstance(data, dict) else {}, enterprise_type=ent.enterprise_type or '')
+        except Exception as e:
+            if 'range' in str(e).lower() or 'weight' in str(e).lower() or 'expected' in str(e).lower():
+                raise
+            _validate_data(data if isinstance(data, dict) else {})
         record = ProductionRecord.objects.get(id=id, organization=user.organization)
         merged = dict(record.data or {})
         merged.update(data if isinstance(data, dict) else {})
