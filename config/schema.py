@@ -16,6 +16,7 @@ from apps.irrigation.schema import IrrigationQuery, IrrigationMutation
 from apps.equipment.schema import EquipmentQuery, EquipmentMutation
 from apps.tracking.schema import TrackingQuery, TrackingMutation
 from apps.market.schema import MarketQuery, MarketMutation
+from apps.market.provider_schema import ProviderQuery, ProviderMutation
 from apps.weather.schema import WeatherQuery, WeatherMutation
 from apps.sustainability.schema import SustainabilityQuery, SustainabilityMutation
 from apps.financials.schema import FinancialsQuery, FinancialsMutation
@@ -41,6 +42,7 @@ class Query(
     EquipmentQuery,
     TrackingQuery,
     MarketQuery,
+    ProviderQuery,
     WeatherQuery,
     SustainabilityQuery,
     FinancialsQuery,
@@ -69,6 +71,7 @@ class Mutation(
     EquipmentMutation,
     TrackingMutation,
     MarketMutation,
+    ProviderMutation,
     WeatherMutation,
     SustainabilityMutation,
     FinancialsMutation,

@@ -2,6 +2,14 @@ import uuid
 from django.db import models
 from django.conf import settings
 
+# Provider models live in a separate file to keep this file manageable,
+# but Django discovers them because they're imported here into the market app.
+from .provider_models import (  # noqa: F401 — imported for Django model registry
+    Provider, ProviderStaff, ProviderService,
+    ProviderCertification, ProviderReview,
+    EquipmentCatalog, HireBooking, VetAppointment,
+)
+
 
 class CommodityPrice(models.Model):
     UNIT_CHOICES = [
