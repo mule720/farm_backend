@@ -47,6 +47,7 @@ class Equipment(models.Model):
     current_latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     current_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     notes = models.TextField(blank=True)
+    last_telemetry_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -90,11 +91,27 @@ class EquipmentTelemetry(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        Equipment.objects.filter(pk=self.equipment_id).update(
+        # Only update equipment state if this telemetry record is newer than the current state
+        Equipment.objects.filter(
+            pk=self.equipment_id,
+            last_telemetry_at__lt=self.recorded_at,
+        ).update(
             engine_hours=self.engine_hours,
             current_fuel_pct=self.fuel_pct,
             current_latitude=self.latitude,
             current_longitude=self.longitude,
+            last_telemetry_at=self.recorded_at,
+        )
+        # Also update if last_telemetry_at is null (first telemetry record)
+        Equipment.objects.filter(
+            pk=self.equipment_id,
+            last_telemetry_at__isnull=True,
+        ).update(
+            engine_hours=self.engine_hours,
+            current_fuel_pct=self.fuel_pct,
+            current_latitude=self.latitude,
+            current_longitude=self.longitude,
+            last_telemetry_at=self.recorded_at,
         )
 
 

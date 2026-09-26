@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.db.models import Sum
@@ -85,7 +86,7 @@ class CostEntry(models.Model):
 
     def save(self, *args, **kwargs):
         if self.quantity and self.unit_cost:
-            self.amount = float(self.quantity) * float(self.unit_cost)
+            self.amount = (Decimal(str(self.quantity)) * Decimal(str(self.unit_cost))).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
         self.batch_financials.recalculate()
 
@@ -119,7 +120,7 @@ class RevenueEntry(models.Model):
 
     def save(self, *args, **kwargs):
         if self.quantity and self.unit_price:
-            self.amount = float(self.quantity) * float(self.unit_price)
+            self.amount = (Decimal(str(self.quantity)) * Decimal(str(self.unit_price))).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
         self.batch_financials.recalculate()
 
@@ -247,3 +248,31 @@ class InsuranceClaim(models.Model):
     class Meta:
         db_table = 'insurance_claims'
         ordering = ['-incident_date']
+
+
+class CreditShareGrant(models.Model):
+    """Farmer-authorised, time-limited, read-only access to their credit summary
+    for one named lender. The token is the only credential: the lender opens a
+    link and sees the summary without an account. Revocable at any time."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, related_name='credit_share_grants')
+    lender_name = models.CharField(max_length=255)
+    lender_contact = models.CharField(max_length=255, blank=True, help_text='Email or phone of the credit officer')
+    purpose = models.CharField(max_length=255, blank=True, help_text='e.g. Seasonal input loan application')
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    is_revoked = models.BooleanField(default=False)
+    access_count = models.PositiveIntegerField(default=0)
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'credit_share_grants'
+        ordering = ['-created_at']
+
+    @property
+    def is_active(self):
+        from django.utils import timezone
+        return not self.is_revoked and self.expires_at > timezone.now()

@@ -3,7 +3,8 @@ import graphql_jwt
 from graphene_django import DjangoObjectType
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
-from .models import Organization, Profile
+from .models import Organization, Profile, Branch
+from . import rbac
 
 
 class OrganizationType(DjangoObjectType):
@@ -11,8 +12,10 @@ class OrganizationType(DjangoObjectType):
 
     class Meta:
         model = Organization
-        fields = ['id', 'name', 'slug', 'plan', 'country', 'currency',
-                  'logo_url', 'is_active', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'slug', 'plan', 'org_type', 'business_type', 'country', 'province',
+                  'district', 'currency', 'logo_url', 'data_sharing_consent',
+                  'data_sharing_consented_at', 'is_active', 'created_at', 'updated_at']
+        convert_choices_to_enum = False
 
     def resolve_member_count(self, info):
         return self.members.filter(is_active=True).count()
@@ -21,15 +24,35 @@ class OrganizationType(DjangoObjectType):
 class ProfileType(DjangoObjectType):
     organization_name = graphene.String()
     is_platform_admin = graphene.Boolean()
+    org_type = graphene.String()
+    business_type = graphene.String()
+    branch_id = graphene.UUID()
+    branch_name = graphene.String()
+    permissions = graphene.JSONString(description='Effective module→actions matrix (role default or per-user override)')
 
     class Meta:
         model = Profile
-        fields = ['id', 'email', 'full_name', 'role', 'avatar_url', 'phone',
+        fields = ['id', 'email', 'full_name', 'role', 'avatar_url', 'phone', 'is_org_admin',
                   'organization', 'is_active', 'preferences', 'created_at', 'updated_at']
         convert_choices_to_enum = False
 
     def resolve_organization_name(self, info):
         return self.organization.name if self.organization else None
+
+    def resolve_org_type(self, info):
+        return self.organization.org_type if self.organization else None
+
+    def resolve_business_type(self, info):
+        return self.organization.business_type if self.organization else None
+
+    def resolve_branch_id(self, info):
+        return self.branch_id
+
+    def resolve_branch_name(self, info):
+        return self.branch.name if self.branch_id else None
+
+    def resolve_permissions(self, info):
+        return rbac.effective_matrix(self)
 
     def resolve_is_platform_admin(self, info):
         return self.role == 'saas_admin'
@@ -44,6 +67,11 @@ class RegisterInput(graphene.InputObjectType):
     organization_name = graphene.String(required=True)
     role = graphene.String()
     phone = graphene.String(required=True)  # mandatory
+    business_type = graphene.String()  # farm / vendor participant type
+    # Government / partner registrations only
+    org_type = graphene.String()
+    province = graphene.String()
+    district = graphene.String()
 
 
 class UpdateProfileInput(graphene.InputObjectType):
@@ -55,7 +83,10 @@ class UpdateProfileInput(graphene.InputObjectType):
 
 class UpdateOrganizationInput(graphene.InputObjectType):
     name = graphene.String()
+    business_type = graphene.String()
     country = graphene.String()
+    province = graphene.String()
+    district = graphene.String()
     currency = graphene.String()
     logo_url = graphene.String()
     settings = graphene.JSONString()
@@ -67,6 +98,8 @@ class InviteUserInput(graphene.InputObjectType):
     role = graphene.String(required=True)
     phone = graphene.String(required=True)  # mandatory
     password = graphene.String()  # optional — director can set it; auto-generated if omitted
+    branch_id = graphene.UUID()
+    permissions = graphene.JSONString()  # optional per-user override {module: [actions]}
 
 
 # ─── Auth payload ─────────────────────────────────────────────────────────────
@@ -163,7 +196,22 @@ class Register(graphene.Mutation):
             slug = f'{base_slug}-{counter}'
             counter += 1
 
-        org = Organization.objects.create(name=input.organization_name, slug=slug)
+        # A gov_viewer can only ever belong to a non-farm organisation, and a
+        # farm org can never be created with a gov_viewer as its first member.
+        org_kwargs = {'name': input.organization_name, 'slug': slug}
+        bt = (input.get('business_type') or '').strip()
+        if bt:
+            if bt not in dict(Organization.BUSINESS_TYPE_CHOICES):
+                raise Exception('Invalid business type.')
+            org_kwargs['business_type'] = bt
+        if selected_role in Profile.PARTNER_ROLES:
+            org_type = (input.get('org_type') or 'government').strip()
+            if org_type not in ('government', 'ngo', 'donor'):
+                raise Exception('Invalid organisation type for a government / partner account.')
+            org_kwargs['org_type'] = org_type
+            org_kwargs['province'] = (input.get('province') or '').strip()
+            org_kwargs['district'] = (input.get('district') or '').strip()
+        org = Organization.objects.create(**org_kwargs)
         user = Profile.objects.create_user(
             email=email,
             full_name=input.full_name,
@@ -172,6 +220,9 @@ class Register(graphene.Mutation):
             organization=org,
             role=selected_role,
         )
+        # The person who creates an organisation administers it
+        user.is_org_admin = True
+        user.save(update_fields=['is_org_admin'])
         token = get_token(user)
         refresh = create_refresh_token(user)
         return AuthPayload(token=token, refresh_token=refresh.token, user=user)
@@ -239,9 +290,13 @@ class UpdateOrganization(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
-        if user.role not in ('director', 'saas_admin'):
-            raise Exception('Permission denied')
+        rbac.assert_org_admin(user, 'change organisation settings')
         org = user.organization
+        if input.get('business_type') is not None:
+            if org.org_type != 'farm':
+                raise Exception('Business type applies to farms and vendors only')
+            if input.business_type not in dict(Organization.BUSINESS_TYPE_CHOICES):
+                raise Exception('Invalid business type.')
         for field, value in input.items():
             if value is not None:
                 setattr(org, field, value)
@@ -266,8 +321,7 @@ class InviteUser(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
-        if user.role not in ('director', 'saas_admin'):
-            raise Exception('Permission denied — only Directors can add employees.')
+        rbac.assert_org_admin(user, 'add team members')
 
         # Phone is mandatory
         phone = (input.get('phone') or '').strip()
@@ -284,10 +338,20 @@ class InviteUser(graphene.Mutation):
         if Profile.objects.filter(email=email).exists():
             raise Exception('A user with this email already exists.')
 
-        allowed_roles = {choice[0] for choice in Profile.ROLE_CHOICES}
-        role = (input.role or 'farmhand').strip()
+        org_type = rbac.org_type_of(user)
+        allowed_roles = set(rbac.role_ids_for(org_type))
+        role = (input.role or rbac.role_ids_for(org_type)[-1]).strip()
         if role not in allowed_roles:
-            raise Exception('Invalid role.')
+            raise Exception(f'Invalid role for a {org_type} organisation. Allowed: {", ".join(sorted(allowed_roles))}')
+        branch = None
+        if input.get('branch_id'):
+            branch = Branch.objects.filter(pk=input.branch_id, organization=user.organization).first()
+            if branch is None:
+                raise Exception('Branch not found')
+        perms = input.get('permissions')
+        if isinstance(perms, str):
+            import json as _json
+            perms = _json.loads(perms)
 
         # Use director-supplied password, or auto-generate one with unambiguous characters
         custom_pwd = input.get('password', '').strip() if input.get('password') else ''
@@ -306,7 +370,10 @@ class InviteUser(graphene.Mutation):
             role=role,
             phone=phone,
             organization=user.organization,
+            branch=branch,
+            preferences={'permissions': perms} if isinstance(perms, dict) and perms else {},
         )
+        rbac.audit(user.organization, user, 'member_invited', new_user, {'role': role, 'branch': branch.name if branch else None})
 
         # ── In-app notification to new user ───────────────────────────────────
         login_identifier = phone if email.endswith('@agrinuxes.local') else email
@@ -314,10 +381,9 @@ class InviteUser(graphene.Mutation):
             new_user,
             title='Welcome to Agrinuxes!',
             message=(
-                f'Your account has been created by {user.full_name}.\n'
-                f'Login: {login_identifier}\n'
-                f'Temporary password: {pwd}\n'
-                f'Please change your password after first login.'
+                f'You have been invited to join {user.organization.name}. '
+                f'Your account credentials have been sent to your email. '
+                f'Please log in and change your password immediately.'
             ),
             category='system',
             priority='info',
@@ -326,7 +392,9 @@ class InviteUser(graphene.Mutation):
 
         # ── Email notification (best-effort — skip if SMTP not configured) ────
         has_real_email = not email.endswith('@agrinuxes.local')
-        if has_real_email:
+        # Skip the SMTP attempt entirely when no mail account is configured (it otherwise
+        # blocks the request for ~10 s trying to reach the default host)
+        if has_real_email and getattr(django_settings, 'EMAIL_HOST_USER', ''):
             try:
                 send_mail(
                     subject=f'Your Agrinuxes account — {user.organization.name}',
@@ -366,16 +434,21 @@ class SetMemberPermissions(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
-        if user.role not in ('director', 'saas_admin'):
-            raise Exception('Permission denied')
+        rbac.assert_org_admin(user, 'change permissions')
         target = Profile.objects.get(id=user_id, organization=user.organization)
+        if rbac.is_org_admin(target):
+            raise Exception('Administrators always have full access; remove admin first to restrict them')
         prefs = dict(target.preferences or {})
         # graphene JSONString may arrive already-parsed or as a string
         if isinstance(permissions, str):
             permissions = json.loads(permissions)
-        prefs['permissions'] = permissions
+        valid_modules = {m for m, _, _ in rbac.modules_for(rbac.org_type_of(user))}
+        cleaned = {m: [a for a in acts if a in rbac.ACTIONS] for m, acts in (permissions or {}).items()
+                   if m in valid_modules and isinstance(acts, list)}
+        prefs['permissions'] = cleaned
         target.preferences = prefs
         target.save()
+        rbac.audit(user.organization, user, 'permissions_changed', target, {'modules': sorted(cleaned)})
         return SetMemberPermissions(profile=target)
 
 
@@ -387,11 +460,13 @@ class ActivateUser(graphene.Mutation):
 
     def mutate(self, info, user_id):
         user = info.context.user
-        if user.role not in ('director', 'saas_admin'):
-            raise Exception('Permission denied')
+        if user.is_anonymous:
+            raise Exception('Not authenticated')
+        rbac.assert_org_admin(user)
         target = Profile.objects.get(id=user_id, organization=user.organization)
         target.is_active = True
         target.save()
+        rbac.audit(user.organization, user, 'member_activated', target)
         return ActivateUser(success=True)
 
 
@@ -406,14 +481,14 @@ class UpdateMemberRole(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
-        if user.role not in ('director', 'saas_admin'):
-            raise Exception('Permission denied — only Directors can change roles.')
-        allowed_roles = {choice[0] for choice in Profile.ROLE_CHOICES}
+        rbac.assert_org_admin(user, 'change roles')
+        allowed_roles = set(rbac.role_ids_for(rbac.org_type_of(user)))
         if role not in allowed_roles:
             raise Exception('Invalid role.')
         target = Profile.objects.get(id=user_id, organization=user.organization)
         target.role = role
         target.save()
+        rbac.audit(user.organization, user, 'role_changed', target, {'role': role})
         return UpdateMemberRole(profile=target)
 
 
@@ -444,16 +519,43 @@ class DeactivateUser(graphene.Mutation):
 
     def mutate(self, info, user_id):
         user = info.context.user
-        if user.role not in ('director', 'saas_admin'):
-            raise Exception('Permission denied')
+        rbac.assert_org_admin(user)
         target = Profile.objects.get(id=user_id, organization=user.organization)
+        if target.pk == user.pk:
+            raise Exception('You cannot deactivate yourself')
         target.is_active = False
         target.save()
+        rbac.audit(user.organization, user, 'member_deactivated', target)
         return DeactivateUser(success=True)
+
+
+class SetDataSharingConsent(graphene.Mutation):
+    """Farmer opt-in / opt-out of de-identified government & partner aggregates."""
+
+    class Arguments:
+        consent = graphene.Boolean(required=True)
+
+    organization = graphene.Field(OrganizationType)
+
+    def mutate(self, info, consent):
+        from django.utils import timezone
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Not authenticated')
+        if user.role != 'director':
+            raise Exception('Permission denied: only a director can change data-sharing consent')
+        org = user.organization
+        if org is None or org.org_type != 'farm':
+            raise Exception('Only farm organisations can share data')
+        org.data_sharing_consent = consent
+        org.data_sharing_consented_at = timezone.now() if consent else None
+        org.save(update_fields=['data_sharing_consent', 'data_sharing_consented_at'])
+        return SetDataSharingConsent(organization=org)
 
 
 class AccountMutation(graphene.ObjectType):
     register = Register.Field()
+    set_data_sharing_consent = SetDataSharingConsent.Field()
     login = Login.Field()
     verify_token = graphql_jwt.Verify.Field()
     refresh_token = graphql_jwt.Refresh.Field()

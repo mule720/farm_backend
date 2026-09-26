@@ -483,19 +483,36 @@ class UpdateHireBookingStatus(graphene.Mutation):
     booking = graphene.Field(HireBookingType)
     ok = graphene.Boolean()
 
+    _VALID_STATUSES = {'enquiry', 'quoted', 'confirmed', 'active', 'completed', 'cancelled'}
+
     def mutate(self, info, id, status, provider_notes=None, quoted_amount=None, agreed_amount=None):
+        org = _org(info)  # raises if anonymous
+
+        if status not in UpdateHireBookingStatus._VALID_STATUSES:
+            raise Exception(f'Invalid status. Must be one of: {", ".join(sorted(UpdateHireBookingStatus._VALID_STATUSES))}')
+
         try:
-            booking = HireBooking.objects.get(pk=id)
+            booking = HireBooking.objects.select_related('provider').get(pk=id)
         except HireBooking.DoesNotExist:
             raise Exception('Booking not found')
+
+        # Caller must own the booking (customer) or own the provider that fulfils it
+        is_customer      = str(booking.organization_id) == str(org.pk)
+        is_provider_owner = (
+            booking.provider.registered_by_id is not None
+            and str(booking.provider.registered_by_id) == str(org.pk)
+        )
+        if not (is_customer or is_provider_owner):
+            raise Exception('Access denied')
 
         booking.status = status
         if provider_notes is not None:
             booking.provider_notes = provider_notes
+        from decimal import Decimal
         if quoted_amount is not None:
-            booking.quoted_amount = quoted_amount
+            booking.quoted_amount = Decimal(str(quoted_amount))
         if agreed_amount is not None:
-            booking.agreed_amount = agreed_amount
+            booking.agreed_amount = Decimal(str(agreed_amount))
         booking.save()
         return UpdateHireBookingStatus(booking=booking, ok=True)
 
@@ -541,7 +558,6 @@ class BookVetAppointment(graphene.Mutation):
             species=input.get('species', ''),
             animal_count=input.get('animal_count', 0),
             symptoms=input.get('symptoms', ''),
-            notes=input.get('notes', ''),
             status='requested',
         )
         appt.save()
@@ -565,17 +581,35 @@ class UpdateVetAppointment(graphene.Mutation):
     appointment = graphene.Field(VetAppointmentType)
     ok = graphene.Boolean()
 
+    _VALID_STATUSES = {'requested', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'}
+
     def mutate(self, info, id, **kwargs):
+        org = _org(info)  # raises if anonymous
+
+        status = kwargs.get('status')
+        if status is not None and status not in UpdateVetAppointment._VALID_STATUSES:
+            raise Exception(f'Invalid status. Must be one of: {", ".join(sorted(UpdateVetAppointment._VALID_STATUSES))}')
+
         try:
-            appt = VetAppointment.objects.get(pk=id)
+            appt = VetAppointment.objects.select_related('provider').get(pk=id)
         except VetAppointment.DoesNotExist:
             raise Exception('Appointment not found')
 
+        # Caller must own the appointment (customer) or own the provider that fulfils it
+        is_customer       = str(appt.organization_id) == str(org.pk)
+        is_provider_owner = (
+            appt.provider.registered_by_id is not None
+            and str(appt.provider.registered_by_id) == str(org.pk)
+        )
+        if not (is_customer or is_provider_owner):
+            raise Exception('Access denied')
+
+        from decimal import Decimal
         for field in ['status', 'diagnosis', 'treatment_given', 'follow_up_date',
                       'outcome_notes', 'total_amount', 'paid']:
             val = kwargs.get(field)
             if val is not None:
-                setattr(appt, field, val)
+                setattr(appt, field, Decimal(str(val)) if field == 'total_amount' else val)
         appt.save()
         return UpdateVetAppointment(appointment=appt, ok=True)
 

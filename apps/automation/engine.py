@@ -1,4 +1,5 @@
 """Automation rule evaluation engine."""
+from django.db import transaction
 from django.utils import timezone
 from .models import AutomationRule, AutomationTriggerLog, Task
 
@@ -28,40 +29,44 @@ def evaluate_rule(rule: AutomationRule, current_value: float, user=None,
     if not triggered:
         return False, None
 
-    # Check cooldown
-    if rule.last_triggered_at and not dry_run:
-        elapsed = (timezone.now() - rule.last_triggered_at).total_seconds() / 60
-        if elapsed < rule.cooldown_minutes:
-            return False, None
-
     if dry_run:
         return True, None
 
-    # Record trigger log
-    log = AutomationTriggerLog.objects.create(
-        organization=rule.organization,
-        rule=rule,
-        triggered_value=current_value,
-        action_taken=rule.action_message,
-        notified_user=rule.action_assign_to or user,
-    )
+    with transaction.atomic():
+        # Re-fetch the rule with a row-level lock to prevent double-fire race conditions
+        rule = AutomationRule.objects.select_for_update().get(pk=rule.pk)
 
-    # Execute action
-    if rule.action_type == 'task':
-        Task.objects.create(
+        # Check cooldown inside the lock so concurrent calls can't both pass
+        if rule.last_triggered_at:
+            elapsed = (timezone.now() - rule.last_triggered_at).total_seconds() / 60
+            if elapsed < rule.cooldown_minutes:
+                return False, None
+
+        # Record trigger log
+        log = AutomationTriggerLog.objects.create(
             organization=rule.organization,
-            title=f'[Auto] {rule.name}',
-            description=rule.action_message,
-            priority=rule.action_priority,
-            assigned_to=rule.action_assign_to,
-            source='automation',
-            automation_rule=rule,
+            rule=rule,
+            triggered_value=current_value,
+            action_taken=rule.action_message,
+            notified_user=rule.action_assign_to or user,
         )
 
-    # Update rule stats
-    rule.last_triggered_at = timezone.now()
-    rule.trigger_count += 1
-    rule.save(update_fields=['last_triggered_at', 'trigger_count'])
+        # Execute action
+        if rule.action_type == 'task':
+            Task.objects.create(
+                organization=rule.organization,
+                title=f'[Auto] {rule.name}',
+                description=rule.action_message,
+                priority=rule.action_priority,
+                assigned_to=rule.action_assign_to,
+                source='automation',
+                automation_rule=rule,
+            )
+
+        # Update rule stats
+        rule.last_triggered_at = timezone.now()
+        rule.trigger_count += 1
+        rule.save(update_fields=['last_triggered_at', 'trigger_count'])
 
     return True, log
 

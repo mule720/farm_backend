@@ -1,5 +1,6 @@
 import uuid
-from django.db import models
+from django.db import models, transaction
+from django.db.models import F
 from django.conf import settings
 
 
@@ -87,14 +88,18 @@ class InventoryTransaction(models.Model):
     def save(self, *args, **kwargs):
         if self.unit_cost and not self.total_cost:
             self.total_cost = abs(self.quantity) * self.unit_cost
-        super().save(*args, **kwargs)
-        # Update stock
-        item = self.item
-        if self.transaction_type in ('purchase', 'adjustment'):
-            item.current_stock += self.quantity
-        elif self.transaction_type in ('usage', 'disposal', 'transfer'):
-            item.current_stock -= abs(self.quantity)
-        item.save(update_fields=['current_stock'])
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if self.transaction_type in ('purchase', 'adjustment'):
+                delta = self.quantity
+            elif self.transaction_type in ('usage', 'disposal', 'transfer'):
+                delta = -abs(self.quantity)
+            else:
+                delta = 0
+            if delta != 0:
+                InventoryItem.objects.filter(pk=self.item_id).update(
+                    current_stock=F('current_stock') + delta
+                )
 
     def __str__(self):
         return f'{self.transaction_type} — {self.item.name} ({self.quantity})'

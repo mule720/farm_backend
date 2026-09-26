@@ -194,6 +194,9 @@ class FarmerReport(models.Model):
     resolution_notes = models.TextField(blank=True)
     visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default='private')
     helpful_count = models.PositiveIntegerField(default=0)
+    helpful_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name='helpful_reports', blank=True
+    )
     submitted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='farmer_reports'

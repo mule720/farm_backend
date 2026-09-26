@@ -50,6 +50,11 @@ INSTALLED_APPS = [
     'apps.greenhouse',
     'apps.labor',
     'apps.notifications',
+    'apps.video_calls',
+    'apps.integration_settings',
+    'apps.government',
+    'apps.extension',
+    'apps.partners',
 ]
 
 MIDDLEWARE = [
@@ -185,12 +190,18 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='AgroNexus <noreply@agron
 
 SUPABASE_JWT_SECRET = env('SUPABASE_JWT_SECRET', default='')
 
+# ─── Jitsi Video Calls ────────────────────────────────────────────────────────
+JITSI_DOMAIN     = env('JITSI_DOMAIN', default='meet.jit.si')
+JITSI_APP_ID     = env('JITSI_APP_ID', default='agronexus')
+JITSI_APP_SECRET = env('JITSI_APP_SECRET', default=SECRET_KEY)
+
 # ─── File Storage ─────────────────────────────────────────────────────────────
 # In production, media files go to Google Cloud Storage so they survive pod restarts.
 # Requires: django-storages[google] in requirements.txt
 # Set GCS_MEDIA_BUCKET env var to your GCS bucket name.
-if not DEBUG:
-    GS_BUCKET_NAME = env('GCS_MEDIA_BUCKET', default='')
+# Leave GCS_MEDIA_BUCKET empty (e.g. on a VPS) to keep files on MEDIA_ROOT and serve /media/ from the web server.
+GS_BUCKET_NAME = env('GCS_MEDIA_BUCKET', default='')
+if not DEBUG and GS_BUCKET_NAME:
     GS_DEFAULT_ACL = None          # uniform bucket-level access — no per-object ACLs
     MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
     # Override default storage backend to GCS (Django 5.1 STORAGES dict)

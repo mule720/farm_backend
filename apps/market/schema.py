@@ -1,6 +1,8 @@
 import graphene
+from decimal import Decimal
 from graphene_django import DjangoObjectType
 from .models import CommodityPrice, BuyerProfile, MarketListing, TradeContract, AuctionEvent
+from apps.accounts import rbac
 def _org(info):
     user = info.context.user
     if user.is_anonymous:
@@ -18,6 +20,7 @@ class BuyerProfileType(DjangoObjectType):
     class Meta:
         model = BuyerProfile
         fields = '__all__'
+        convert_choices_to_enum = False
 
 
 class MarketListingType(DjangoObjectType):
@@ -30,6 +33,7 @@ class TradeContractType(DjangoObjectType):
     class Meta:
         model = TradeContract
         fields = '__all__'
+        convert_choices_to_enum = False
 
 
 class AuctionEventType(DjangoObjectType):
@@ -72,6 +76,11 @@ class MarketQuery(graphene.ObjectType):
         return BuyerProfile.objects.get(pk=id, organization=_org(info))
 
     def resolve_market_listings(self, info, status=None):
+        # MarketListing is a public marketplace (classifieds board): active listings from all
+        # organisations are intentionally visible to any authenticated user so buyers can
+        # browse all available produce/services.  Authentication is enforced by _org(info)
+        # below, which raises if the caller is anonymous.
+        _org(info)  # enforces authentication; cross-org visibility is intentional here
         qs = MarketListing.objects.filter(status='active') if not status else MarketListing.objects.filter(status=status)
         return qs
 
@@ -125,12 +134,14 @@ class CreateBuyerProfile(graphene.Mutation):
         email = graphene.String()
         address = graphene.String()
         town = graphene.String()
+        country = graphene.String()
         commodities_wanted = graphene.List(graphene.String)
         payment_terms = graphene.String()
 
     buyer = graphene.Field(BuyerProfileType)
 
     def mutate(self, info, name, **kwargs):
+        rbac.require_module(info.context.user, 'sales', 'create')
         buyer = BuyerProfile.objects.create(
             organization=_org(info), name=name,
             created_by=info.context.user,
@@ -154,11 +165,12 @@ class CreateListing(graphene.Mutation):
     listing = graphene.Field(MarketListingType)
 
     def mutate(self, info, commodity, quantity_available, asking_price, **kwargs):
+        from decimal import Decimal
         listing = MarketListing.objects.create(
             organization=_org(info),
             commodity=commodity,
-            quantity_available=quantity_available,
-            asking_price=asking_price,
+            quantity_available=Decimal(str(quantity_available)),
+            asking_price=Decimal(str(asking_price)),
             created_by=info.context.user,
             status='active',
             **{k: v for k, v in kwargs.items() if v is not None},
@@ -195,11 +207,12 @@ class CreateTradeContract(graphene.Mutation):
     contract = graphene.Field(TradeContractType)
 
     def mutate(self, info, commodity, quantity_agreed, agreed_price, **kwargs):
+        rbac.require_module(info.context.user, 'sales', 'create')
         contract = TradeContract(
             organization=_org(info),
             commodity=commodity,
-            quantity_agreed=quantity_agreed,
-            agreed_price=agreed_price,
+            quantity_agreed=Decimal(str(quantity_agreed)),
+            agreed_price=Decimal(str(agreed_price)),
             created_by=info.context.user,
             **{k: v for k, v in kwargs.items() if v is not None},
         )
@@ -218,11 +231,12 @@ class UpdateContractStatus(graphene.Mutation):
     contract = graphene.Field(TradeContractType)
 
     def mutate(self, info, id, status, **kwargs):
+        rbac.require_module(info.context.user, 'sales', 'edit')
         contract = TradeContract.objects.get(pk=id, organization=_org(info))
         contract.status = status
         for k, v in kwargs.items():
             if v is not None:
-                setattr(contract, k, v)
+                setattr(contract, k, Decimal(str(v)) if isinstance(v, float) else v)
         contract.save()
         return UpdateContractStatus(contract=contract)
 

@@ -197,6 +197,16 @@ class CreateComplianceTask(graphene.Mutation):
     task = graphene.Field(ComplianceTaskType)
 
     def mutate(self, info, title, due_date, **kwargs):
+        certification_id = kwargs.get('certification_id')
+        if certification_id:
+            from apps.sustainability.models import CertificationRecord
+            if not CertificationRecord.objects.filter(id=certification_id, organization=_org(info)).exists():
+                raise Exception('Certification record not found in your organization')
+        assigned_to_id = kwargs.get('assigned_to_id')
+        if assigned_to_id:
+            from apps.accounts.models import Profile
+            if not Profile.objects.filter(id=assigned_to_id, organization=_org(info)).exists():
+                raise Exception('Assigned user not found in your organization')
         task = ComplianceTask.objects.create(
             organization=_org(info),
             title=title, due_date=due_date,

@@ -20,6 +20,7 @@ class Notification(models.Model):
         ('compliance',   'Compliance'),
         ('vision',       'AI Vision'),
         ('system',       'System'),
+        ('video_call',   'Video Call'),
     ]
 
     PRIORITY_CHOICES = [

@@ -155,6 +155,11 @@ class CreateFieldOperation(graphene.Mutation):
     operation = graphene.Field(FieldOperationType)
 
     def mutate(self, info, operation_type, scheduled_date, **kwargs):
+        enterprise_id = kwargs.get('enterprise_id')
+        if enterprise_id:
+            from apps.enterprises.models import Enterprise
+            if not Enterprise.objects.filter(id=enterprise_id, organization=_org(info)).exists():
+                raise Exception('Enterprise not found or does not belong to your organization')
         op = FieldOperation.objects.create(
             organization=_org(info),
             operation_type=operation_type,

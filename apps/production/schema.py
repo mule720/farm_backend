@@ -232,6 +232,7 @@ class UpdateProductionRecord(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
+        record = ProductionRecord.objects.get(id=id, organization=user.organization)
         try:
             from apps.enterprises.models import Enterprise
             ent = Enterprise.objects.get(id=record.enterprise_id, organization=user.organization)
@@ -240,7 +241,6 @@ class UpdateProductionRecord(graphene.Mutation):
             if 'range' in str(e).lower() or 'weight' in str(e).lower() or 'expected' in str(e).lower():
                 raise
             _validate_data(data if isinstance(data, dict) else {})
-        record = ProductionRecord.objects.get(id=id, organization=user.organization)
         merged = dict(record.data or {})
         merged.update(data if isinstance(data, dict) else {})
         record.data = merged

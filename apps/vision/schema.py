@@ -136,7 +136,10 @@ class VisionQuery(graphene.ObjectType):
         return qs[:limit]
 
     def resolve_community_reports(self, info, category=None, limit=30):
-        # Public reports from ALL organizations
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Authentication required')
+        # Public community reports from ALL organizations (intentionally cross-org)
         qs = FarmerReport.objects.filter(visibility='community')
         if category:
             qs = qs.filter(category=category)
@@ -353,6 +356,8 @@ class AuthorizeStockMovement(graphene.Mutation):
 
     def mutate(self, info, log_id, authorization_ref, notes=''):
         user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Authentication required')
         if user.role not in ('director', 'production_manager', 'supervisor', 'sales_manager', 'saas_admin'):
             raise Exception('Permission denied')
         log = StockCountLog.objects.get(id=log_id, organization=user.organization)
@@ -449,7 +454,10 @@ class MarkReportHelpful(graphene.Mutation):
         if user.is_anonymous:
             raise Exception('Not authenticated')
         report = FarmerReport.objects.get(id=report_id, visibility='community')
-        report.helpful_count += 1
+        if report.helpful_users.filter(pk=user.pk).exists():
+            raise Exception('You have already marked this report as helpful')
+        report.helpful_users.add(user)
+        report.helpful_count = report.helpful_users.count()
         report.save(update_fields=['helpful_count'])
         return MarkReportHelpful(report=report)
 

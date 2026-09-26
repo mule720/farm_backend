@@ -221,6 +221,8 @@ class DeleteAutomationRule(graphene.Mutation):
 
     def mutate(self, info, id):
         user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Authentication required')
         if user.role not in ('director', 'production_manager', 'saas_admin'):
             raise Exception('Permission denied')
         AutomationRule.objects.get(id=id, organization=user.organization).delete()
@@ -242,7 +244,7 @@ class TestAutomationRule(graphene.Mutation):
         if user.is_anonymous:
             raise Exception('Not authenticated')
         rule = AutomationRule.objects.get(id=id, organization=user.organization)
-        triggered, log = evaluate_rule(rule, test_value, user, dry_run=False)
+        triggered, log = evaluate_rule(rule, test_value, user, dry_run=True)
         return TestAutomationRule(
             triggered=triggered,
             message=f'Rule {"triggered" if triggered else "not triggered"} for value {test_value}',

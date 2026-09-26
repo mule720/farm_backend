@@ -246,7 +246,7 @@ class UpdateWidget(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
-        widget = DashboardWidget.objects.get(id=id, organization=user.organization)
+        widget = DashboardWidget.objects.get(id=id, organization=user.organization, profile=user)
         for k, v in input.items():
             if v is not None:
                 setattr(widget, k, v)
@@ -280,7 +280,7 @@ class ReorderWidgets(graphene.Mutation):
             raise Exception('Not authenticated')
         updated = []
         for o in orders:
-            w = DashboardWidget.objects.get(id=o.id, organization=user.organization)
+            w = DashboardWidget.objects.get(id=o.id, organization=user.organization, profile=user)
             w.widget_order = o.widget_order
             w.save(update_fields=['widget_order'])
             updated.append(w)

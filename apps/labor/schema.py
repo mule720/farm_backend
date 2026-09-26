@@ -304,6 +304,8 @@ class AddPayrollLine(graphene.Mutation):
 
     def mutate(self, info, payroll_run_id, worker_id, **kwargs):
         run = PayrollRun.objects.get(pk=payroll_run_id, organization=_org(info))
+        if run.status not in ('draft', 'under_review'):
+            raise Exception(f'Cannot add lines to a payroll run in status: {run.status}')
         worker = WorkerProfile.objects.get(pk=worker_id, organization=_org(info))
         line = PayrollLine(
             payroll_run=run, worker=worker,
@@ -321,6 +323,11 @@ class ApprovePayrollRun(graphene.Mutation):
     payroll_run = graphene.Field(PayrollRunType)
 
     def mutate(self, info, id, payment_date=None):
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Authentication required')
+        if user.role not in ('director', 'finance_manager', 'saas_admin'):
+            raise Exception('Permission denied: only directors and finance managers can approve payroll')
         run = PayrollRun.objects.get(pk=id, organization=_org(info))
         run.status = 'approved'
         run.approved_by = info.context.user

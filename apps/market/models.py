@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
 
@@ -139,7 +140,8 @@ class TradeContract(models.Model):
         ordering = ['-created_at']
 
     def save(self, *args, **kwargs):
-        self.total_value = float(self.quantity_agreed) * float(self.agreed_price)
+        # Keep Decimal end-to-end: a float here breaks the GraphQL Decimal scalar on the way out
+        self.total_value = (Decimal(str(self.quantity_agreed)) * Decimal(str(self.agreed_price))).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
 
 

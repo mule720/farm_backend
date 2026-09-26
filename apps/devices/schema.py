@@ -286,6 +286,8 @@ class UnpairDevice(graphene.Mutation):
 
     def mutate(self, info, id):
         user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Authentication required')
         if user.role not in ('director', 'production_manager', 'supervisor', 'saas_admin'):
             raise Exception('Permission denied')
         Device.objects.get(id=id, organization=user.organization).delete()

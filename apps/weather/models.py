@@ -90,6 +90,9 @@ class FarmField(models.Model):
     expected_harvest_date = models.DateField(null=True, blank=True)
     soil_type = models.CharField(max_length=100, blank=True)
     gps_boundary = models.JSONField(default=list, help_text='Polygon as list of [lat,lng] points')
+    # Point location used for satellite NDVI when no polygon is drawn
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     nearest_station = models.ForeignKey(WeatherStation, on_delete=models.SET_NULL, null=True, blank=True, related_name='fields')
     # Latest NDVI
     latest_ndvi = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)

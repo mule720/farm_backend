@@ -194,6 +194,8 @@ class DeleteKPI(graphene.Mutation):
 
     def mutate(self, info, id):
         user = info.context.user
+        if user.is_anonymous:
+            raise Exception('Authentication required')
         if user.role not in ('director', 'production_manager', 'saas_admin'):
             raise Exception('Permission denied')
         KPIDefinition.objects.get(id=id, organization=user.organization).delete()

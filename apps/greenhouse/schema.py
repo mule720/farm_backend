@@ -104,6 +104,11 @@ class CreateGreenhouseZone(graphene.Mutation):
     zone = graphene.Field(GreenhouseZoneType)
 
     def mutate(self, info, name, **kwargs):
+        enterprise_id = kwargs.get('enterprise_id')
+        if enterprise_id:
+            from apps.enterprises.models import Enterprise
+            if not Enterprise.objects.filter(id=enterprise_id, organization=_org(info)).exists():
+                raise Exception('Enterprise not found or does not belong to your organization')
         zone = GreenhouseZone.objects.create(
             organization=_org(info), name=name,
             created_by=info.context.user,

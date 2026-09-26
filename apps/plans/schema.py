@@ -214,11 +214,25 @@ class CreatePlan(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
+        from apps.enterprises.models import Enterprise, Batch
+        from apps.accounts.models import Profile
+        enterprise_id = input.get('enterprise_id')
+        if enterprise_id:
+            if not Enterprise.objects.filter(id=enterprise_id, organization=user.organization).exists():
+                raise Exception('Enterprise not found or does not belong to your organization')
+        batch_id = input.get('batch_id')
+        if batch_id:
+            if not Batch.objects.filter(id=batch_id, organization=user.organization).exists():
+                raise Exception('Batch not found or does not belong to your organization')
+        assigned_to_id = input.get('assigned_to_id')
+        if assigned_to_id:
+            if not Profile.objects.filter(id=assigned_to_id, organization=user.organization).exists():
+                raise Exception('Assigned user not found in your organization')
         plan = Plan.objects.create(
             organization=user.organization,
             created_by=user,
-            enterprise_id=input.get('enterprise_id'),
-            batch_id=input.get('batch_id'),
+            enterprise_id=enterprise_id,
+            batch_id=batch_id,
             plan_type=input.plan_type,
             title=input.title,
             description=input.get('description', ''),
@@ -226,7 +240,7 @@ class CreatePlan(graphene.Mutation):
             start_date=input.get('start_date'),
             end_date=input.get('end_date'),
             initiate_product=input.get('initiate_product', False),
-            assigned_to_id=input.get('assigned_to_id'),
+            assigned_to_id=assigned_to_id,
         )
         return CreatePlan(plan=plan)
 
@@ -341,16 +355,30 @@ class CreateDailyPlan(graphene.Mutation):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
+        from apps.enterprises.models import Enterprise, Batch
+        from apps.accounts.models import Profile
+        enterprise_id = input.get('enterprise_id')
+        if enterprise_id:
+            if not Enterprise.objects.filter(id=enterprise_id, organization=user.organization).exists():
+                raise Exception('Enterprise not found or does not belong to your organization')
+        batch_id = input.get('batch_id')
+        if batch_id:
+            if not Batch.objects.filter(id=batch_id, organization=user.organization).exists():
+                raise Exception('Batch not found or does not belong to your organization')
+        supervisor_id = input.get('supervisor_id')
+        if supervisor_id and supervisor_id != str(user.id):
+            if not Profile.objects.filter(id=supervisor_id, organization=user.organization).exists():
+                raise Exception('Supervisor not found in your organization')
         daily_plan = DailyPlan.objects.create(
             organization=user.organization,
             created_by=user,
-            enterprise_id=input.get('enterprise_id'),
-            batch_id=input.get('batch_id'),
+            enterprise_id=enterprise_id,
+            batch_id=batch_id,
             plan_date=input.plan_date,
             title=input.get('title', ''),
             notes=input.get('notes', ''),
             status=input.get('status', 'draft'),
-            supervisor_id=input.get('supervisor_id') or user.id,
+            supervisor_id=supervisor_id or user.id,
         )
         return CreateDailyPlan(daily_plan=daily_plan)
 

@@ -213,6 +213,13 @@ class LogFeeding(graphene.Mutation):
     record = graphene.Field(FeedingRecordType)
 
     def mutate(self, info, feed_type, quantity_kg, feed_date, **kwargs):
+        animal_id = kwargs.get('animal_id')
+        if animal_id:
+            from apps.tracking.models import AnimalRecord
+            try:
+                AnimalRecord.objects.get(pk=animal_id, organization=_org(info))
+            except AnimalRecord.DoesNotExist:
+                raise Exception('Animal record not found in your organization')
         record = FeedingRecord(
             organization=_org(info),
             feed_type=feed_type,

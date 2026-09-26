@@ -1,5 +1,6 @@
 import graphene
 from graphene_django import DjangoObjectType
+from django.db.models import Q
 from .models import EnterpriseTemplate, Enterprise, EnterpriseStage, EnterpriseBatch
 
 
@@ -141,7 +142,7 @@ class EnterpriseQuery(graphene.ObjectType):
     def resolve_templates(self, info, category=None, built_in_only=None):
         org = _org(info)
         qs = EnterpriseTemplate.objects.filter(
-            graphene.Q(is_built_in=True) | graphene.Q(organization=org)
+            Q(is_built_in=True) | Q(organization=org)
         )
         if category:
             qs = qs.filter(category=category)

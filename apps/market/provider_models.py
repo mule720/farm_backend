@@ -19,7 +19,16 @@ PROVIDER_TYPE_CHOICES = [
     ('extension',       'Extension & Advisory Services'),
     ('cold_storage',    'Cold Storage'),
     ('certification',   'Certification & Inspection'),
+    ('agrifood',        'AgriFood Seller / Fresh Produce'),
+    ('agri_services',   'Agricultural Services'),
 ]
+
+# Organization.business_type -> directory provider_type
+BUSINESS_TO_PROVIDER_TYPE = {
+    'agro_dealer': 'agro_dealer', 'agrisupply_provider': 'agro_dealer', 'vet_provider': 'vet_services', 'equipment_hire': 'equipment_hire',
+    'processor': 'processing', 'transport': 'transport', 'agriservices_provider': 'agri_services', 'agrifood_seller': 'agrifood',
+    'cooperative': 'agrifood', 'farmer': 'agrifood',
+}
 
 ZAMBIA_DISTRICTS = [
     'Lusaka', 'Kitwe', 'Ndola', 'Kabwe', 'Chingola', 'Mufulira', 'Livingstone',
@@ -326,7 +335,9 @@ class HireBooking(models.Model):
     booking_ref     = models.CharField(max_length=30, unique=True, blank=True)
     provider        = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='hire_bookings')
     equipment       = models.ForeignKey(EquipmentCatalog, on_delete=models.SET_NULL, null=True, blank=True, related_name='bookings')
-    organization    = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, related_name='hire_bookings')
+    organization    = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, null=True, blank=True, related_name='hire_bookings')
+    client_name     = models.CharField(max_length=255, blank=True, help_text='Walk-in customer (no platform account)')
+    client_phone    = models.CharField(max_length=50, blank=True)
     enterprise      = models.ForeignKey('enterprises.Enterprise', on_delete=models.SET_NULL, null=True, blank=True, related_name='hire_bookings')
     requested_by    = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -396,7 +407,9 @@ class VetAppointment(models.Model):
     id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     appt_ref        = models.CharField(max_length=30, unique=True, blank=True)
     provider        = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='vet_appointments')
-    organization    = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, related_name='vet_appointments')
+    organization    = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, null=True, blank=True, related_name='vet_appointments')
+    client_name     = models.CharField(max_length=255, blank=True, help_text='Walk-in client (no platform account)')
+    client_phone    = models.CharField(max_length=50, blank=True)
     enterprise      = models.ForeignKey('enterprises.Enterprise', on_delete=models.SET_NULL, null=True, blank=True, related_name='vet_appointments')
     requested_by    = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -444,3 +457,6 @@ class VetAppointment(models.Model):
 
     def __str__(self):
         return f'{self.appt_ref} — {self.provider.name} ({self.appt_type})'
+
+
+from .vendor_models import VendorOrder, WorkOrder, EquipmentMaintenance, ProcessingBatch, VendorInvoice  # noqa: E402,F401

@@ -10,6 +10,12 @@ ROLE_HIERARCHY = {
     'vet_officer': 5,
     'farmhand': 4,
     'driver': 3,
+    # Read-only aggregate access; sits below every farm role so it never
+    # satisfies a has_min_role() check on farm data.
+    'gov_viewer': 1,
+    'extension_officer': 1,
+    'partner_manager': 1,
+    'gov_admin': 2, 'extension_supervisor': 2, 'partner_admin': 2, 'partner_me_officer': 1, 'partner_observer': 1,
 }
 
 

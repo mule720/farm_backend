@@ -17,12 +17,24 @@ from apps.equipment.schema import EquipmentQuery, EquipmentMutation
 from apps.tracking.schema import TrackingQuery, TrackingMutation
 from apps.market.schema import MarketQuery, MarketMutation
 from apps.market.provider_schema import ProviderQuery, ProviderMutation
+from apps.market.vendor_schema import VendorQuery, VendorMutation
 from apps.weather.schema import WeatherQuery, WeatherMutation
 from apps.sustainability.schema import SustainabilityQuery, SustainabilityMutation
 from apps.financials.schema import FinancialsQuery, FinancialsMutation
 from apps.greenhouse.schema import GreenhouseQuery, GreenhouseMutation
 from apps.labor.schema import LaborQuery, LaborMutation
 from apps.notifications.schema import NotificationQuery, NotificationMutation
+from apps.video_calls.schema import VideoCallQuery, VideoCallMutation
+from apps.integration_settings.schema import IntegrationSettingsQuery, IntegrationSettingsMutation
+from apps.government.schema import GovernmentQuery, GovernmentMutation
+from apps.extension.schema import ExtensionQuery, ExtensionMutation
+from apps.partners.schema import PartnerQuery, PartnerMutation
+from apps.market.export_schema import ExportQuery, ExportMutation
+from apps.financials.credit_schema import CreditQuery, CreditMutation
+from apps.accounts.team_schema import TeamQuery, TeamMutation
+from apps.government.ecosystem import EcosystemQuery, EcosystemMapQuery
+from apps.partners.map_schema import ProgrammeMapQuery
+from apps.partners.logframe import LogframeQuery, LogframeMutation
 
 
 class Query(
@@ -43,12 +55,25 @@ class Query(
     TrackingQuery,
     MarketQuery,
     ProviderQuery,
+    VendorQuery,
     WeatherQuery,
     SustainabilityQuery,
     FinancialsQuery,
     GreenhouseQuery,
     LaborQuery,
     NotificationQuery,
+    VideoCallQuery,
+    IntegrationSettingsQuery,
+    GovernmentQuery,
+    ExtensionQuery,
+    PartnerQuery,
+    ExportQuery,
+    CreditQuery,
+    TeamQuery,
+    EcosystemQuery,
+    EcosystemMapQuery,
+    ProgrammeMapQuery,
+    LogframeQuery,
     graphene.ObjectType,
 ):
     pass
@@ -72,12 +97,22 @@ class Mutation(
     TrackingMutation,
     MarketMutation,
     ProviderMutation,
+    VendorMutation,
     WeatherMutation,
     SustainabilityMutation,
     FinancialsMutation,
     GreenhouseMutation,
     LaborMutation,
     NotificationMutation,
+    VideoCallMutation,
+    IntegrationSettingsMutation,
+    GovernmentMutation,
+    ExtensionMutation,
+    PartnerMutation,
+    LogframeMutation,
+    ExportMutation,
+    CreditMutation,
+    TeamMutation,
     graphene.ObjectType,
 ):
     pass

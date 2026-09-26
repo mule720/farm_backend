@@ -13,9 +13,6 @@ class IrrigationZoneType(DjangoObjectType):
         model = IrrigationZone
         fields = '__all__'
 
-    hours_until_next_service = graphene.Float()
-    service_due_soon = graphene.Boolean()
-
 
 class IrrigationScheduleType(DjangoObjectType):
     class Meta:
@@ -84,6 +81,10 @@ class CreateIrrigationZone(graphene.Mutation):
     def mutate(self, info, name, **kwargs):
         org = _org(info)
         enterprise_id = kwargs.pop('enterprise_id', None)
+        if enterprise_id:
+            from apps.enterprises.models import Enterprise
+            if not Enterprise.objects.filter(id=enterprise_id, organization=org).exists():
+                raise Exception('Enterprise not found or does not belong to your organization')
         zone = IrrigationZone.objects.create(
             organization=org, name=name,
             enterprise_id=enterprise_id,
