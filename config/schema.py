@@ -32,6 +32,7 @@ from apps.partners.schema import PartnerQuery, PartnerMutation
 from apps.market.export_schema import ExportQuery, ExportMutation
 from apps.financials.credit_schema import CreditQuery, CreditMutation
 from apps.accounts.team_schema import TeamQuery, TeamMutation
+from apps.accounts.workspace_schema import WorkspaceQuery, WorkspaceMutation
 from apps.government.ecosystem import EcosystemQuery, EcosystemMapQuery
 from apps.partners.map_schema import ProgrammeMapQuery
 from apps.partners.logframe import LogframeQuery, LogframeMutation
@@ -70,6 +71,7 @@ class Query(
     ExportQuery,
     CreditQuery,
     TeamQuery,
+    WorkspaceQuery,
     EcosystemQuery,
     EcosystemMapQuery,
     ProgrammeMapQuery,
@@ -113,6 +115,7 @@ class Mutation(
     ExportMutation,
     CreditMutation,
     TeamMutation,
+    WorkspaceMutation,
     graphene.ObjectType,
 ):
     pass

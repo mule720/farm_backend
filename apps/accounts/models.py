@@ -212,3 +212,21 @@ class ParticipantProfile(models.Model):
             return self.youth_led
         a = self.head_age()
         return a is not None and a <= self.YOUTH_MAX_AGE
+
+
+class OrgWorkspace(models.Model):
+    """
+    The farm shell's workspace (org profile, enterprises, production cycles,
+    edit-approval queue) as the web app models it, stored per organisation so
+    every member of the company shares one copy across devices. Replaces the
+    per-browser localStorage + Supabase sync.
+    """
+    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name='workspace', primary_key=True)
+    org_data = models.JSONField(default=dict, blank=True)
+    cycles = models.JSONField(default=list, blank=True)
+    edit_requests = models.JSONField(default=list, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'accounts_org_workspace'
