@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'apps.government',
     'apps.extension',
     'apps.partners',
+    'apps.sales',
 ]
 
 MIDDLEWARE = [
