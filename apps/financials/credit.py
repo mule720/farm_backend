@@ -94,6 +94,35 @@ def compute_credit_summary(org, as_of=None):
     second_half = sum(x['revenue'] for x in revenue_series[6:])
     revenue_trend_pct = ((second_half - first_half) / first_half * 100) if first_half else None
 
+    # ── Farm ledger (the Finance page) ────────────────────────────────────
+    # Farms that keep their books in the app have income/expense entries rather
+    # than batch financials. When there are costs on the ledger, it is the
+    # basis for profitability: months stand in for batches.
+    from apps.financials.models import FarmTransaction
+    ledger = list(FarmTransaction.objects.filter(organization=org).values('tx_type', 'amount', 'date'))
+    ledger_12 = [r for r in ledger if r['date'] >= since_12]
+    use_ledger = any(r['tx_type'] == 'expense' for r in ledger_12)
+    profit_unit = 'batches'
+    if use_ledger:
+        profit_unit = 'months'
+        revenue_life = sum(_f(r['amount']) for r in ledger if r['tx_type'] == 'income')
+        costs_life = sum(_f(r['amount']) for r in ledger if r['tx_type'] == 'expense')
+        revenue_12 = sum(_f(r['amount']) for r in ledger_12 if r['tx_type'] == 'income')
+        costs_12 = sum(_f(r['amount']) for r in ledger_12 if r['tx_type'] == 'expense')
+        profit_12 = revenue_12 - costs_12
+        roi_12 = (profit_12 / costs_12 * 100) if costs_12 else None
+        margin_12 = (profit_12 / revenue_12 * 100) if revenue_12 else None
+        m_rev, m_cost = defaultdict(float), defaultdict(float)
+        for r in ledger_12:
+            (m_rev if r['tx_type'] == 'income' else m_cost)[_month_key(r['date'])] += _f(r['amount'])
+        scored_batches = sum(1 for m in m_cost if m_cost[m] > 0)
+        profitable_batches = sum(1 for m in m_cost if m_cost[m] > 0 and m_rev.get(m, 0) > m_cost[m])
+        monthly_revenue = m_rev
+        revenue_series = [{'month': m, 'revenue': round(monthly_revenue.get(m, 0.0), 2)} for m in reversed(months_12)]
+        first_half = sum(x['revenue'] for x in revenue_series[:6])
+        second_half = sum(x['revenue'] for x in revenue_series[6:])
+        revenue_trend_pct = ((second_half - first_half) / first_half * 100) if first_half else None
+
     # ── Trading history ───────────────────────────────────────────────────
     contracts = TradeContract.objects.filter(organization=org)
     fulfilled = contracts.filter(status='fulfilled')
@@ -140,8 +169,8 @@ def compute_credit_summary(org, as_of=None):
         {'key': 'record_consistency', 'label': 'Record-keeping consistency', 'weight': WEIGHTS['record_consistency'], 'score': round(f_records * WEIGHTS['record_consistency'], 1),
          'evidence': f'{active_months} of last 12 months with production records ({records_12m} records); last record {days_since_record} days ago' if days_since_record is not None else 'No production records yet'},
         {'key': 'profitability', 'label': 'Profitability', 'weight': WEIGHTS['profitability'], 'score': round(f_profit * WEIGHTS['profitability'], 1),
-         'evidence': (f'ROI {roi_12:.0f}% and margin {margin_12:.0f}% over 12 months; {profitable_batches}/{scored_batches} batches profitable'
-                      if roi_12 is not None else 'No batch financials with costs recorded')},
+         'evidence': (f'ROI {roi_12:.0f}% and margin {(margin_12 if margin_12 is not None else 0):.0f}% over 12 months; {profitable_batches}/{scored_batches} {profit_unit} profitable'
+                      if roi_12 is not None else 'No batch financials or ledger costs recorded')},
         {'key': 'trading_history', 'label': 'Trading history', 'weight': WEIGHTS['trading_history'], 'score': round(f_trade * WEIGHTS['trading_history'], 1),
          'evidence': f'{contracts_fulfilled} contracts fulfilled (ZMW {contracts_value_fulfilled:,.0f}), {contracts_disputed} disputed/cancelled, {verified_buyers} verified buyers'},
         {'key': 'tenure_and_scale', 'label': 'Tenure & scale', 'weight': WEIGHTS['tenure_and_scale'], 'score': round(f_tenure * WEIGHTS['tenure_and_scale'], 1),
@@ -174,7 +203,7 @@ def compute_credit_summary(org, as_of=None):
         'financials': {'revenue_12m': round(revenue_12, 2), 'costs_12m': round(costs_12, 2), 'profit_12m': round(profit_12, 2),
                        'roi_pct_12m': round(roi_12, 1) if roi_12 is not None else None, 'margin_pct_12m': round(margin_12, 1) if margin_12 is not None else None,
                        'revenue_lifetime': round(revenue_life, 2), 'costs_lifetime': round(costs_life, 2),
-                       'profitable_batches': profitable_batches, 'scored_batches': scored_batches,
+                       'profitable_batches': profitable_batches, 'scored_batches': scored_batches, 'basis': 'ledger' if use_ledger else 'batches',
                        'revenue_trend_pct': round(revenue_trend_pct, 1) if revenue_trend_pct is not None else None, 'monthly_revenue': revenue_series},
         'trading': {'contracts_fulfilled': contracts_fulfilled, 'contracts_open': contracts_open, 'contracts_disputed': contracts_disputed,
                     'fulfilled_value': round(contracts_value_fulfilled, 2), 'fulfilment_rate_pct': round(fulfil_rate * 100) if fulfil_rate is not None else None,

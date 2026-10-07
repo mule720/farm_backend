@@ -276,3 +276,45 @@ class CreditShareGrant(models.Model):
     def is_active(self):
         from django.utils import timezone
         return not self.is_revoked and self.expires_at > timezone.now()
+
+
+class FarmTransaction(models.Model):
+    """
+    The farm's simple money ledger: one income or expense per row. This is what
+    the farm shell's Finance page reads and writes, and what production, sales
+    and processing post into automatically. It also feeds the lender credit
+    summary. (BatchFinancials/CostEntry/RevenueEntry above are the older,
+    batch-structured ledger and are kept as they are.)
+    """
+    EXPENSE_CATEGORIES = ('feed', 'medicine', 'seed', 'fertiliser', 'labour', 'equipment', 'transport',
+                          'utilities', 'marketing', 'repairs', 'other_cost')
+    INCOME_CATEGORIES = ('sale_income', 'grant', 'other_income')
+    SOURCES = ('manual', 'production', 'sales', 'processing', 'import')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, related_name='farm_transactions')
+    tx_type = models.CharField(max_length=10, choices=[('income', 'Income'), ('expense', 'Expense')])
+    category = models.CharField(max_length=30)
+    description = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    date = models.DateField()
+    cycle_ref = models.CharField(max_length=64, blank=True, help_text='Production cycle id in the farm workspace')
+    reference = models.CharField(max_length=100, blank=True, help_text='Receipt / invoice number')
+    notes = models.TextField(blank=True)
+    source = models.CharField(max_length=20, default='manual')
+    source_ref = models.CharField(max_length=120, blank=True, help_text='Idempotency key for automatic postings')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'farm_transactions'
+        ordering = ['-date', '-created_at']
+        indexes = [models.Index(fields=['organization', 'date'])]
+        constraints = [
+            models.UniqueConstraint(fields=['organization', 'source_ref'], condition=~models.Q(source_ref=''),
+                                    name='uniq_farm_tx_source_ref'),
+        ]
+
+    def __str__(self):
+        return f'{self.tx_type} {self.amount} {self.description}'
