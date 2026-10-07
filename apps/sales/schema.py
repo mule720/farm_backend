@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.accounts import rbac
 from apps.financials.models import FarmTransaction
+from apps.inventory.service import release_stock_for_order
 from .models import SaleCustomer, SaleOrder, SalePayment
 
 MAX_LINES = 100
@@ -332,17 +333,20 @@ class UpdateSaleOrder(graphene.Mutation):
                 order = SaleOrder.objects.select_for_update().get(id=id, organization_id=u.organization_id)
             except (SaleOrder.DoesNotExist, ValueError, ValidationError):
                 raise Exception('Order not found')
+            became_fulfilled = False
             if status is not None and status != order.status:
                 if status not in SaleOrder.FLOW.get(order.status, set()):
                     raise Exception(f'A {order.status} order cannot become {status}')
                 order.status = status
                 if status == 'fulfilled':
                     order.fulfilled_at = timezone.now()
+                    became_fulfilled = True
             if notes is not None:
                 order.notes = notes
             order.save()
-            if order.status == 'fulfilled':
+            if became_fulfilled:       # only on the move into fulfilled — never when a note is edited later
                 _post_to_ledger(order, u)
+                release_stock_for_order(order, u)
         return UpdateSaleOrder(order=order)
 
 

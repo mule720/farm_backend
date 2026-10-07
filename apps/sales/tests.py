@@ -193,6 +193,16 @@ class SalesTests(TestCase):
         self.assertEqual((r['customersCreated'], r['ordersCreated'], r['skipped']), (0, 0, 4))
         self.assertEqual(SaleOrder.objects.count(), 2)
 
+    def test_editing_an_imported_fulfilled_order_does_not_repost_income(self):
+        c, o = self.legacy()
+        gql(self.owner, IMPORT, {'c': c, 'o': o})
+        order = SaleOrder.objects.get(legacy_id='o1')                                          # imported as fulfilled
+        r = gql(self.owner, UPD, {'id': str(order.id), 'n': 'late delivery noted'})
+        self.assertIsNone(r.errors, r.errors)
+        r = gql(self.owner, UPD, {'id': str(order.id), 's': 'fulfilled'})                      # asking again is not a transition
+        self.assertIsNone(r.errors, r.errors)
+        self.assertEqual(FarmTransaction.objects.count(), 0)
+
     def test_import_keeps_order_numbers_unique(self):
         gql(self.owner, IMPORT, {'c': [], 'o': [{'legacyId': 'a', 'orderNumber': 'ORD-202609-001', 'customerName': 'A', 'date': '2026-09-01', 'lines': [line()]}]})
         r = gql(self.owner, IMPORT, {'c': [], 'o': [{'legacyId': 'b', 'orderNumber': 'ORD-202609-001', 'customerName': 'B', 'date': '2026-09-02', 'lines': [line()]}]})

@@ -6,8 +6,9 @@ from django.conf import settings
 
 class InventoryItem(models.Model):
     CATEGORY_CHOICES = [
-        ('feed', 'Feed'), ('medicine', 'Medicine'), ('equipment', 'Equipment'),
-        ('chemical', 'Chemical'), ('packaging', 'Packaging'), ('other', 'Other'),
+        ('feed', 'Feed'), ('medicine', 'Medicine'), ('seed', 'Seed'), ('fertiliser', 'Fertiliser'),
+        ('equipment', 'Equipment'), ('chemical', 'Chemical'), ('packaging', 'Packaging'),
+        ('produce', 'Produce'), ('processed', 'Processed goods'), ('other', 'Other'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -27,6 +28,9 @@ class InventoryItem(models.Model):
     unit_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     supplier = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
+    location = models.CharField(max_length=255, blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+    legacy_id = models.CharField(max_length=64, blank=True, help_text='Id from the old browser-only record, for idempotent import')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+'
@@ -37,6 +41,9 @@ class InventoryItem(models.Model):
     class Meta:
         db_table = 'inventory_items'
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(fields=['organization', 'legacy_id'], condition=~models.Q(legacy_id=''), name='uniq_inv_item_legacy'),
+        ]
 
     def __str__(self):
         return self.name
@@ -75,6 +82,10 @@ class InventoryTransaction(models.Model):
     total_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     reference = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
+    movement_date = models.DateField(null=True, blank=True, help_text='The day the stock moved (recorded_at is when it was typed in)')
+    destination = models.CharField(max_length=255, blank=True)
+    source = models.CharField(max_length=20, default='manual')
+    source_ref = models.CharField(max_length=120, blank=True, help_text='Idempotency key for automatic postings')
     recorded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+'
@@ -84,6 +95,9 @@ class InventoryTransaction(models.Model):
     class Meta:
         db_table = 'inventory_transactions'
         ordering = ['-recorded_at']
+        constraints = [
+            models.UniqueConstraint(fields=['organization', 'source_ref'], condition=~models.Q(source_ref=''), name='uniq_inv_tx_source_ref'),
+        ]
 
     def save(self, *args, **kwargs):
         if self.unit_cost and not self.total_cost:
