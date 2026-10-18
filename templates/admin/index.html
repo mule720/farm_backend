@@ -1,0 +1,11 @@
+{% extends "admin/index.html" %}
+{% block content %}
+<div class="module" style="margin-bottom:16px">
+  <table><caption>User guide</caption>
+  <tr><th scope="row">AGRINUXES User Guide (319 pages)</th>
+    <td><a href="{% url 'admin:user_guide' 'pdf' %}">Download PDF</a></td>
+    <td><a href="{% url 'admin:user_guide' 'docx' %}">Download Word</a></td></tr>
+  </table>
+</div>
+{{ block.super }}
+{% endblock %}

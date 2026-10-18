@@ -34,3 +34,4 @@ class ProfileAdmin(UserAdmin):
         }),
     )
     filter_horizontal = []
+from . import guide_admin  # noqa: F401  (adds the user-guide download to the admin index)
