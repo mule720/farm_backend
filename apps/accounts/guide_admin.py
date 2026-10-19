@@ -5,6 +5,7 @@ from django.urls import path
 from django.conf import settings
 
 _FILES = {
+    'html': ('AGRINUXES-User-Guide.html', 'text/html; charset=utf-8'),
     'pdf': ('AGRINUXES_User_Guide.pdf', 'application/pdf'),
     'docx': ('AGRINUXES_User_Guide.docx',
              'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
@@ -18,7 +19,8 @@ def user_guide(request, fmt):
     f = settings.BASE_DIR / 'docs' / name
     if not f.exists():
         raise Http404
-    return FileResponse(open(f, 'rb'), as_attachment=True, filename=name, content_type=ctype)
+    # the web version opens in the browser; the Word and PDF versions download
+    return FileResponse(open(f, 'rb'), as_attachment=(fmt != 'html'), filename=name, content_type=ctype)
 
 
 _orig_get_urls = admin.site.get_urls

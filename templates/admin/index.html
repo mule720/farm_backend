@@ -2,7 +2,8 @@
 {% block content %}
 <div class="module" style="margin-bottom:16px">
   <table><caption>User guide</caption>
-  <tr><th scope="row">AGRINUXES User Guide (319 pages)</th>
+  <tr><th scope="row">AGRINUXES User Guide</th>
+    <td><a href="{% url 'admin:user_guide' 'html' %}" target="_blank" rel="noopener">Read online (with screenshots)</a></td>
     <td><a href="{% url 'admin:user_guide' 'pdf' %}">Download PDF</a></td>
     <td><a href="{% url 'admin:user_guide' 'docx' %}">Download Word</a></td></tr>
   </table>
