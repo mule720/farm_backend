@@ -9,6 +9,9 @@ environ.Env.read_env(BASE_DIR / '.env')
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-3txn=-s=q^ou57(m=$5f8wjdsw9uu@dy)rq4pazzi8qsug9-$a')
 DEBUG = env('DEBUG')
+
+# 64 hex characters (32 bytes). Encrypts the API keys saved in the platform admin. Do not change it once keys are saved.
+INTEGRATION_CREDENTIAL_MASTER_KEY_HEX = env('INTEGRATION_CREDENTIAL_MASTER_KEY_HEX', default='')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
 INSTALLED_APPS = [

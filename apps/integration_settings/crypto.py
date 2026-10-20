@@ -14,6 +14,9 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+DEV_FALLBACK_KEY_HEX = 'ac0fe17' * 9 + '1'  # 32 bytes, deterministic, for local development only
+
+
 def _get_master_key() -> bytes:
     """
     Load the 32-byte (256-bit) AES master key from settings.
@@ -26,7 +29,7 @@ def _get_master_key() -> bytes:
             '[integration_settings.crypto] INTEGRATION_CREDENTIAL_MASTER_KEY_HEX '
             'not configured — using dev fallback key (NOT safe for production)'
         )
-        key_hex = 'ac0fe17' * 9 + '1'  # 32 bytes, deterministic for dev
+        key_hex = DEV_FALLBACK_KEY_HEX
     return bytes.fromhex(key_hex)
 
 
@@ -41,10 +44,16 @@ def aes_encrypt(plaintext: str) -> str:
 
 
 def aes_decrypt(encoded: str) -> str:
-    """Decrypt AES-256-GCM ciphertext produced by aes_encrypt."""
+    """Decrypt AES-256-GCM ciphertext produced by aes_encrypt.
+
+    Values saved before a real master key was configured were encrypted with the development fallback key, so that key
+    is tried second. Saving the value again re-encrypts it with the real key.
+    """
     if not encoded:
         return ''
-    key = _get_master_key()
     raw = base64.b64decode(encoded)
     nonce, ct = raw[:12], raw[12:]
-    return AESGCM(key).decrypt(nonce, ct, None).decode('utf-8')
+    try:
+        return AESGCM(_get_master_key()).decrypt(nonce, ct, None).decode('utf-8')
+    except Exception:
+        return AESGCM(bytes.fromhex(DEV_FALLBACK_KEY_HEX)).decrypt(nonce, ct, None).decode('utf-8')
