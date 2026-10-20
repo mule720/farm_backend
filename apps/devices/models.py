@@ -23,6 +23,8 @@ class Device(models.Model):
         null=True, blank=True, related_name='devices'
     )
     name = models.CharField(max_length=255)
+    # What the device calls itself when it sends readings (serial number, MAC address or any short name)
+    identifier = models.CharField(max_length=100, blank=True, db_index=True)
     device_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     model = models.CharField(max_length=100, blank=True)
     firmware_version = models.CharField(max_length=50, blank=True)
@@ -191,3 +193,25 @@ class SecurityAlert(models.Model):
 
     def __str__(self):
         return f'[{self.severity.upper()}] {self.title}'
+
+
+class DeviceKey(models.Model):
+    """A secret that lets a sensor, gateway or script send readings. Only a hash is stored."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey('accounts.Organization', on_delete=models.CASCADE, related_name='device_keys')
+    name = models.CharField(max_length=100)
+    prefix = models.CharField(max_length=12)
+    key_hash = models.CharField(max_length=64, unique=True)
+    allow_new_devices = models.BooleanField(default=True, help_text='Create a device automatically the first time it reports')
+    is_active = models.BooleanField(default=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'device_keys'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.prefix}...)'

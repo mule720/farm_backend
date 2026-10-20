@@ -159,6 +159,21 @@ class VisionQuery(graphene.ObjectType):
 
 # ─── Mutations ────────────────────────────────────────────────────────────────
 
+def _thumbnail_data_url(b64):
+    """A small preview of an uploaded photo, kept with the result (the full photo is not stored)."""
+    try:
+        import base64
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(base64.b64decode(b64))).convert('RGB')
+        im.thumbnail((480, 480))
+        buf = io.BytesIO()
+        im.save(buf, 'JPEG', quality=70)
+        return 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ''
+
+
 class AnalyzeImage(graphene.Mutation):
     """
     Trigger AI vision analysis on an image URL.
@@ -166,7 +181,9 @@ class AnalyzeImage(graphene.Mutation):
     Results are persisted and returned.
     """
     class Arguments:
-        image_url = graphene.String(required=True)
+        image_url = graphene.String()
+        image_base64 = graphene.String(description='An uploaded photo (JPEG/PNG/WebP), base64 without the data: prefix')
+        media_type = graphene.String()
         analysis_type = graphene.String(required=True)
         user_description = graphene.String()
         enterprise_id = graphene.ID()
@@ -176,11 +193,22 @@ class AnalyzeImage(graphene.Mutation):
 
     analysis = graphene.Field(AIVisionAnalysisType)
 
-    def mutate(self, info, image_url, analysis_type, user_description='',
+    def mutate(self, info, analysis_type, user_description='', image_url='', image_base64='', media_type='image/jpeg',
                enterprise_id=None, batch_id=None, is_public=False, extra_context=''):
         user = info.context.user
         if user.is_anonymous:
             raise Exception('Not authenticated')
+        if not image_url and not image_base64:
+            raise Exception('Add a photo to analyse.')
+        if len(image_base64) > 7_000_000:
+            raise Exception('That photo is too large. Use a smaller one.')
+        from django.core.cache import cache
+        from datetime import date
+        qk = f'vision:{user.id}:{date.today().isoformat()}'
+        used = cache.get(qk, 0)
+        if used >= 40:
+            raise Exception('You have reached today\'s limit of 40 photo analyses. It resets tomorrow.')
+        cache.set(qk, used + 1, 60 * 60 * 26)
 
         # Build context string for AI
         context_parts = []
@@ -199,7 +227,11 @@ class AnalyzeImage(graphene.Mutation):
             analysis_type=analysis_type,
             user_description=user_description,
             extra_context='\n'.join(context_parts),
+            image_b64=image_base64,
+            media_type=media_type,
         )
+        if image_base64 and not image_url:
+            image_url = _thumbnail_data_url(image_base64)
 
         obj = AIVisionAnalysis.objects.create(
             organization=user.organization,

@@ -3,12 +3,14 @@ from graphene_django import DjangoObjectType
 from django.utils import timezone
 from .models import Device, SensorReading, DroneFlight, CameraEvent, SecurityAlert
 from apps.automation.engine import run_all_rules
+from .models import DeviceKey
+from . import ingest
 
 
 class DeviceType(DjangoObjectType):
     class Meta:
         model = Device
-        fields = ['id', 'name', 'device_type', 'model', 'firmware_version',
+        fields = ['id', 'name', 'identifier', 'device_type', 'model', 'firmware_version',
                   'location', 'status', 'battery_pct', 'signal_strength',
                   'last_seen_at', 'config', 'enterprise', 'paired_by',
                   'created_at', 'updated_at']
@@ -56,6 +58,7 @@ class DeviceStatType(graphene.ObjectType):
 
 class PairDeviceInput(graphene.InputObjectType):
     name = graphene.String(required=True)
+    identifier = graphene.String()
     device_type = graphene.String(required=True)
     enterprise_id = graphene.ID()
     model = graphene.String()
@@ -232,6 +235,7 @@ class PairDevice(graphene.Mutation):
             organization=user.organization,
             paired_by=user,
             name=input.name,
+            identifier=(input.get('identifier') or '').strip()[:100],
             device_type=input.device_type,
             enterprise_id=input.get('enterprise_id'),
             model=input.get('model', ''),
@@ -308,50 +312,12 @@ class IngestSensorReading(graphene.Mutation):
             raise Exception('Not authenticated')
         device = Device.objects.get(id=input.device_id, organization=user.organization)
 
-        # Determine if value is an alert (device threshold logic)
-        alert_thresholds = {
-            'dissolved_oxygen': (4.0, None),   # (min_ok, max_ok)
-            'ph': (6.0, 9.0),
-            'ammonia': (None, 25.0),
-            'co2': (None, 2000.0),
-        }
-        is_alert = False
-        thresholds = alert_thresholds.get(input.metric)
-        if thresholds:
-            min_ok, max_ok = thresholds
-            if min_ok is not None and input.value < min_ok:
-                is_alert = True
-            if max_ok is not None and input.value > max_ok:
-                is_alert = True
-
-        reading = SensorReading.objects.create(
-            organization=user.organization,
-            device=device,
-            enterprise_id=input.get('enterprise_id') or device.enterprise_id,
-            metric=input.metric,
-            value=input.value,
-            unit=input.unit,
-            is_alert=is_alert,
-        )
-
-        # Update device status and last seen
-        device.status = 'warning' if is_alert else 'online'
-        device.last_seen_at = timezone.now()
-        device.save(update_fields=['status', 'last_seen_at'])
-
-        # Run automation rules
-        triggered = run_all_rules(user.organization, input.metric, input.value, user)
-
-        # Create security alert if sensor is in alert state
-        if is_alert:
-            SecurityAlert.objects.create(
-                organization=user.organization,
-                source='sensor',
-                source_id=device.id,
-                severity='critical',
-                title=f'Sensor Alert: {input.metric.replace("_", " ").title()} — {device.name}',
-                detail=f'Value {input.value} {input.unit} is outside safe range.',
-            )
+        try:
+            reading, triggered, _ = ingest.record_reading(
+                user.organization, device, input.metric, input.value, input.unit, user=user, enterprise_id=input.get('enterprise_id'))
+        except ingest.IngestError as e:
+            raise Exception(str(e))
+        triggered = range(triggered)
 
         return IngestSensorReading(reading=reading, alerts_triggered=len(triggered))
 
@@ -447,7 +413,74 @@ class ResolveSecurityAlert(graphene.Mutation):
         return ResolveSecurityAlert(alert=alert)
 
 
+def _key_admin(info):
+    u = info.context.user
+    if u.is_anonymous:
+        raise Exception('Not authenticated')
+    if u.role not in ('director', 'production_manager', 'supervisor', 'saas_admin') and not getattr(u, 'is_org_admin', False):
+        raise Exception('Only an administrator can manage device keys')
+    return u
+
+
+class DeviceKeyType(graphene.ObjectType):
+    id = graphene.ID()
+    name = graphene.String()
+    prefix = graphene.String()
+    is_active = graphene.Boolean()
+    allow_new_devices = graphene.Boolean()
+    last_used_at = graphene.DateTime()
+    created_at = graphene.DateTime()
+
+
+def _key_type(k):
+    return DeviceKeyType(id=k.id, name=k.name, prefix=k.prefix, is_active=k.is_active, allow_new_devices=k.allow_new_devices,
+                         last_used_at=k.last_used_at, created_at=k.created_at)
+
+
+class DeviceKeysQuery(graphene.ObjectType):
+    device_keys = graphene.List(DeviceKeyType)
+
+    def resolve_device_keys(self, info):
+        u = _key_admin(info)
+        return [_key_type(k) for k in DeviceKey.objects.filter(organization=u.organization)]
+
+
+class CreateDeviceKey(graphene.Mutation):
+    class Arguments:
+        name = graphene.String(required=True)
+        allow_new_devices = graphene.Boolean()
+
+    key = graphene.String(description='The secret. Shown once; only a hash is kept.')
+    device_key = graphene.Field(DeviceKeyType)
+
+    def mutate(self, info, name, allow_new_devices=True):
+        u = _key_admin(info)
+        name = name.strip()[:100]
+        if not name:
+            raise Exception('Give the key a name, for example "Pond gateway".')
+        if DeviceKey.objects.filter(organization=u.organization, is_active=True).count() >= 20:
+            raise Exception('You already have 20 active keys. Revoke one first.')
+        plain, prefix, digest = ingest.new_key()
+        k = DeviceKey.objects.create(organization=u.organization, name=name, prefix=prefix, key_hash=digest,
+                                     allow_new_devices=bool(allow_new_devices), created_by=u)
+        return CreateDeviceKey(key=plain, device_key=_key_type(k))
+
+
+class RevokeDeviceKey(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+
+    ok = graphene.Boolean()
+
+    def mutate(self, info, id):
+        u = _key_admin(info)
+        DeviceKey.objects.filter(id=id, organization=u.organization).update(is_active=False)
+        return RevokeDeviceKey(ok=True)
+
+
 class DevicesMutation(graphene.ObjectType):
+    create_device_key = CreateDeviceKey.Field()
+    revoke_device_key = RevokeDeviceKey.Field()
     pair_device = PairDevice.Field()
     update_device = UpdateDevice.Field()
     unpair_device = UnpairDevice.Field()

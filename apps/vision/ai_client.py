@@ -218,62 +218,81 @@ FALLBACK_RESPONSE = {
 }
 
 
+NOT_CONFIGURED = {
+    'diagnosis': 'AI image analysis is not connected yet',
+    'severity': 'none',
+    'confidence_pct': 0,
+    'findings': [{'title': 'No AI key', 'detail': 'The platform administrator has not added the Claude API key yet, so no photo can be analysed.'}],
+    'recommendations': ['Ask your platform administrator to add the API key under AI settings.'],
+    'ai_summary': 'No analysis was made. Nothing on this screen is a guess: it only appears when the AI service is connected.',
+    'extra_data': {'not_configured': True},
+}
+
+ALLOWED_MEDIA = ('image/jpeg', 'image/png', 'image/webp', 'image/gif')
+
+
+def vision_model():
+    from django.conf import settings
+    return getattr(settings, 'VISION_MODEL', '') or os.environ.get('VISION_MODEL', '') or getattr(settings, 'ASSISTANT_MODEL', '') or 'claude-sonnet-5-5'
+
+
 def analyse_image(
-    image_url: str,
-    analysis_type: str,
+    image_url: str = '',
+    analysis_type: str = 'general',
     user_description: str = '',
     extra_context: str = '',
+    image_b64: str = '',
+    media_type: str = 'image/jpeg',
 ) -> dict:
     """
-    Call Claude Vision to analyse a farm image.
+    Call Claude Vision to analyse a farm image, given either an uploaded photo (base64) or a public URL.
 
-    :param image_url: Publicly accessible URL of the image
-    :param analysis_type: One of the ANALYSIS_PROMPTS keys
-    :param user_description: Farmer's own description of what they see
-    :param extra_context: Additional context (batch info, crop stage, etc.)
-    :returns: Structured dict with diagnosis, severity, findings, etc.
+    :returns: Structured dict with diagnosis, severity, findings, etc. When no API key is set the result says so
+              plainly (extra_data.not_configured) instead of inventing a diagnosis.
     """
     from apps.integration_settings.resolve import get_llm_key
     api_key = get_llm_key()
     if not api_key:
-        logger.warning('ANTHROPIC_API_KEY not set — returning stub analysis')
-        return _stub_response(analysis_type, user_description)
+        logger.warning('Claude API key not set - vision analysis not available')
+        return dict(NOT_CONFIGURED)
 
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
 
         system_prompt = ANALYSIS_PROMPTS.get(analysis_type, ANALYSIS_PROMPTS['general'])
 
         user_parts = []
-        if image_url:
-            user_parts.append({
-                'type': 'image',
-                'source': {'type': 'url', 'url': image_url},
-            })
+        if image_b64:
+            mt = media_type if media_type in ALLOWED_MEDIA else 'image/jpeg'
+            user_parts.append({'type': 'image', 'source': {'type': 'base64', 'media_type': mt, 'data': image_b64}})
+        elif image_url:
+            user_parts.append({'type': 'image', 'source': {'type': 'url', 'url': image_url}})
 
         text_content = 'Please analyse this farm image.'
         if user_description:
             text_content += f'\n\nFarmer reports: {user_description}'
         if extra_context:
             text_content += f'\n\nAdditional context: {extra_context}'
+        text_content += '\n\nIf the image does not show what the analysis type expects, say so in the diagnosis and keep confidence low.'
         user_parts.append({'type': 'text', 'text': text_content})
 
+        model = vision_model()
         response = client.messages.create(
-            model='claude-opus-4-8',
-            max_tokens=1500,
+            model=model,
+            max_tokens=1800,
             system=system_prompt,
             messages=[{'role': 'user', 'content': user_parts}],
         )
 
-        raw_text = response.content[0].text.strip()
+        raw_text = ''.join(getattr(b, 'text', '') for b in response.content).strip()
         result = _parse_json_response(raw_text)
-        result['ai_model_used'] = 'claude-opus-4-8'
+        result['ai_model_used'] = model
         return result
 
     except Exception as exc:
         logger.error('Vision analysis error: %s', exc)
-        return {**FALLBACK_RESPONSE, 'extra_data': {'error': str(exc)}}
+        return {**FALLBACK_RESPONSE, 'extra_data': {'error': str(exc)[:300]}}
 
 
 def _parse_json_response(text: str) -> dict:

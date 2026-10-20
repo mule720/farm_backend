@@ -5,6 +5,7 @@ from django.conf.urls.static import static
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from graphene_django.views import GraphQLView
+from apps.devices.views import readings as device_readings
 
 
 def health_check(request):
@@ -17,6 +18,8 @@ urlpatterns = [
     # Kubernetes health probe — no auth required
     path('health/', health_check),
     # Single GraphQL endpoint — all apps exposed here
+    # Sensors, gateways and scripts post readings here with a device key (see Device Gateway in the app)
+    path('api/devices/readings/', device_readings),
     path('graphql/', csrf_exempt(GraphQLView.as_view(graphiql=settings.DEBUG))),
 ]
 
