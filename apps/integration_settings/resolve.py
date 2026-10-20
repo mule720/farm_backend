@@ -8,6 +8,22 @@ as the equivalent resolver in E-commerce, ERP, Shipping, Bus, and Tourism.
 from django.conf import settings as dj_settings
 
 
+def get_llm_key() -> str:
+    """The Claude API key: the one an administrator pasted into the platform admin (stored encrypted),
+    otherwise the ANTHROPIC_API_KEY environment variable. Empty string when neither is set."""
+    import os
+    try:
+        from .models import IntegrationCredential
+        row = IntegrationCredential.objects.filter(service='ai', is_active=True).first()
+        if row:
+            key = row.get_api_key()
+            if key:
+                return key
+    except Exception:
+        pass
+    return os.environ.get('ANTHROPIC_API_KEY', '') or getattr(dj_settings, 'ANTHROPIC_API_KEY', '')
+
+
 def get_service_config(
     service: str,
     *,

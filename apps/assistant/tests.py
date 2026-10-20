@@ -1,7 +1,7 @@
 from unittest import mock
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from django.contrib.auth import get_user_model
 from apps.accounts.models import Organization
@@ -102,3 +102,35 @@ class GraphqlTests(TestCase):
         self.assertIn('answer', out['data']['askAssistant']['result'])
         out = c.execute('{ assistantStatus }', context_value=req)
         self.assertNotIn('errors', out)
+
+
+class KeyFromAdminTests(TestCase):
+    def test_key_saved_in_admin_store_turns_the_model_on(self):
+        import os
+        from apps.integration_settings.models import IntegrationCredential
+        with mock.patch.dict(os.environ, {'ANTHROPIC_API_KEY': ''}):
+            self.assertFalse(service.available())
+            row = IntegrationCredential(service='ai', is_active=True)
+            row.set_api_key('sk-ant-test-1234')
+            row.save()
+            self.assertTrue(service.available())
+            self.assertNotIn('sk-ant', row.encrypted_api_key)
+            row.is_active = False
+            row.save()
+            self.assertFalse(service.available())
+
+    @override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                                 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+    def test_admin_page_saves_key_encrypted_and_never_shows_it(self):
+        from django.test import Client
+        from apps.integration_settings.models import IntegrationCredential
+        admin_user = User.objects.create_superuser(email='boss@x.test', password='pw12345!', full_name='Boss')
+        c = Client()
+        c.force_login(admin_user)
+        r = c.post('/admin/integration_settings/integrationcredential/add/', {
+            'service': 'ai', 'is_active': 'on', 'new_api_key': 'sk-ant-secret-9999', 'base_url': '', 'app_id': ''}, HTTP_HOST='localhost')
+        self.assertEqual(r.status_code, 302)
+        row = IntegrationCredential.objects.get(service='ai')
+        self.assertEqual(row.get_api_key(), 'sk-ant-secret-9999')
+        page = c.get(f'/admin/integration_settings/integrationcredential/{row.id}/change/', HTTP_HOST='localhost')
+        self.assertNotIn(b'sk-ant-secret-9999', page.content)

@@ -24,6 +24,7 @@ class IntegrationCredential(models.Model):
         PAYMENT = 'payment', 'Payment System'
         NOTIFICATION = 'notification', 'Notification Service'
         GATEWAY = 'gateway', 'Shared Gateway'
+        AI = 'ai', 'AI (Claude API key: assistant and image analysis)'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     service = models.CharField(max_length=20, choices=Service.choices, unique=True)

@@ -6,6 +6,8 @@
     <td><a href="{% url 'admin:user_guide' 'html' %}" target="_blank" rel="noopener">Read online (with screenshots)</a></td>
     <td><a href="{% url 'admin:user_guide' 'pdf' %}">Download PDF</a></td>
     <td><a href="{% url 'admin:user_guide' 'docx' %}">Download Word</a></td></tr>
+  <tr><th scope="row">AI assistant: paste the Claude API key</th>
+    <td colspan="3"><a href="{% url 'admin:integration_settings_integrationcredential_changelist' %}">Open AI settings</a></td></tr>
   </table>
 </div>
 {{ block.super }}

@@ -71,7 +71,8 @@ def _trim(s, n):
 
 
 def _llm_key():
-    return os.environ.get('ANTHROPIC_API_KEY', '') or getattr(settings, 'ANTHROPIC_API_KEY', '')
+    from apps.integration_settings.resolve import get_llm_key
+    return get_llm_key()
 
 
 def available():

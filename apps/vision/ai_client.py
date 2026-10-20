@@ -233,7 +233,8 @@ def analyse_image(
     :param extra_context: Additional context (batch info, crop stage, etc.)
     :returns: Structured dict with diagnosis, severity, findings, etc.
     """
-    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    from apps.integration_settings.resolve import get_llm_key
+    api_key = get_llm_key()
     if not api_key:
         logger.warning('ANTHROPIC_API_KEY not set — returning stub analysis')
         return _stub_response(analysis_type, user_description)
