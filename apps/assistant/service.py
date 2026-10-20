@@ -14,7 +14,7 @@ from datetime import date
 from django.conf import settings
 from django.core.cache import cache
 
-from . import catalog, farm_kb, knowledge
+from . import catalog, farm_kb, knowledge, normalise
 
 logger = logging.getLogger(__name__)
 
@@ -117,11 +117,15 @@ def _account_block(acct, ctx):
     return '\n'.join(lines)
 
 
-def _clean_actions(raw, acct):
+def _clean_actions(raw, acct, ctx=None):
     ok, pages, tpls = [], catalog.valid_pages(acct), catalog.template_ids()
+    owned = [str(e.get('baseTemplateId') or e.get('templateId') or '') for e in ((ctx or {}).get('enterprises') or [])]
     for a in (raw or [])[:4]:
         if not isinstance(a, dict):
             continue
+        before = len(ok)
+        if acct in ('farmer', 'cooperative'):
+            a = normalise.normalise(a, owned)
         t, label = a.get('type'), _trim(str(a.get('label') or ''), 60)
         if t == 'navigate' and a.get('page') in pages:
             ok.append({'type': 'navigate', 'page': a['page'], 'label': label or f"Open {catalog.page_label(acct, a['page'])}"})
@@ -132,6 +136,8 @@ def _clean_actions(raw, acct):
         elif t == 'add_enterprise' and acct in ('farmer', 'cooperative') and a.get('templateId') in tpls:
             name = next((x['name'] for x in catalog.templates() if x['id'] == a['templateId']), a['templateId'])
             ok.append({'type': 'add_enterprise', 'templateId': a['templateId'], 'label': label or f'Add {name}'})
+        if len(ok) == before:
+            logger.warning('assistant dropped an action: %s', json.dumps(a, default=str)[:400])
     return ok
 
 
@@ -315,7 +321,7 @@ def ask(user, ip, question, history=None, context=None, conversation_id=None):
             data = _parse(_ask_model(question, hist, acct, ctx, chunks))
             answer = _trim(str(data.get('answer') or ''), 3000)
             suggestions = [_trim(str(s), 70) for s in (data.get('suggestions') or []) if isinstance(s, str)][:4]
-            actions = _clean_actions(data.get('actions'), acct)
+            actions = _clean_actions(data.get('actions'), acct, ctx)
             sources = [_trim(str(s), 120) for s in (data.get('sources') or []) if isinstance(s, str)][:3]
             test_mode = False
         except Exception:
