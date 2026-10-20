@@ -437,8 +437,40 @@ def _key_type(k):
                          last_used_at=k.last_used_at, created_at=k.created_at)
 
 
+class LiveReadingType(graphene.ObjectType):
+    device_id = graphene.ID()
+    metric = graphene.String()
+    value = graphene.Float()
+    unit = graphene.String()
+    is_alert = graphene.Boolean()
+    recorded_at = graphene.DateTime()
+
+
 class DeviceKeysQuery(graphene.ObjectType):
     device_keys = graphene.List(DeviceKeyType)
+    live_readings = graphene.List(LiveReadingType, description='The newest reading of every measure of every device, for the dashboards')
+
+    def resolve_live_readings(self, info):
+        from django.db.models import Max, Q
+        u = info.context.user
+        if u.is_anonymous or not u.organization_id:
+            raise Exception('Not authenticated')
+        groups = list(SensorReading.objects.filter(organization_id=u.organization_id)
+                      .values('device_id', 'metric').annotate(last=Max('recorded_at'))[:600])
+        if not groups:
+            return []
+        q = Q()
+        for g in groups:
+            q |= Q(device_id=g['device_id'], metric=g['metric'], recorded_at=g['last'])
+        seen, out = set(), []
+        for r in SensorReading.objects.filter(organization_id=u.organization_id).filter(q).order_by('-recorded_at'):
+            k = (r.device_id, r.metric)
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(LiveReadingType(device_id=r.device_id, metric=r.metric, value=float(r.value), unit=r.unit,
+                                       is_alert=r.is_alert, recorded_at=r.recorded_at))
+        return out
 
     def resolve_device_keys(self, info):
         u = _key_admin(info)

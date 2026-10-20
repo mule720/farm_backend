@@ -119,3 +119,21 @@ class DeviceKeyApiTests(TestCase):
         out = _gql('mutation { ingestSensorReading(input: {deviceId: "%s", metric: "temperature", value: 26.1, unit: "C"}) { reading { id } alertsTriggered } }' % dev.id, self.boss)
         self.assertNotIn('errors', out)
         self.assertEqual(SensorReading.objects.filter(device=dev).count(), 1)
+
+
+class LiveReadingsTests(TestCase):
+    def test_only_the_newest_value_of_each_measure_for_my_devices(self):
+        org = Organization.objects.create(name='L Farm', slug='l-farm')
+        other = Organization.objects.create(name='O Farm', slug='o-farm')
+        u = User.objects.create_user(email='l@x.test', password='x', full_name='L', organization=org, role='director')
+        dev = Device.objects.create(organization=org, name='Pond', identifier='p1', device_type='sensor')
+        theirs = Device.objects.create(organization=other, name='Theirs', identifier='t1', device_type='sensor')
+        for v in (20, 21, 22):
+            ingest.record_reading(org, dev, 'temperature', v)
+        ingest.record_reading(org, dev, 'ph', 7.2)
+        ingest.record_reading(other, theirs, 'temperature', 99)
+        out = _gql('{ liveReadings { deviceId metric value } }', u)
+        self.assertNotIn('errors', out)
+        rows = {(r['metric']): r['value'] for r in out['data']['liveReadings']}
+        self.assertEqual(rows, {'temperature': 22.0, 'ph': 7.2})
+        self.assertEqual(len(out['data']['liveReadings']), 2)
