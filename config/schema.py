@@ -28,6 +28,7 @@ from apps.video_calls.schema import VideoCallQuery, VideoCallMutation
 from apps.integration_settings.schema import IntegrationSettingsQuery, IntegrationSettingsMutation
 from apps.government.schema import GovernmentQuery, GovernmentMutation
 from apps.assistant.schema import AssistantQuery, AssistantMutation
+from apps.integration_settings.platform_schema import PlatformQuery, PlatformMutation
 from apps.extension.schema import ExtensionQuery, ExtensionMutation
 from apps.partners.schema import PartnerQuery, PartnerMutation
 from apps.market.export_schema import ExportQuery, ExportMutation
@@ -71,6 +72,7 @@ class Query(
     IntegrationSettingsQuery,
     GovernmentQuery,
     AssistantQuery,
+    PlatformQuery,
     ExtensionQuery,
     PartnerQuery,
     ExportQuery,
@@ -118,6 +120,7 @@ class Mutation(
     IntegrationSettingsMutation,
     GovernmentMutation,
     AssistantMutation,
+    PlatformMutation,
     ExtensionMutation,
     PartnerMutation,
     LogframeMutation,

@@ -134,3 +134,31 @@ class KeyFromAdminTests(TestCase):
         self.assertEqual(row.get_api_key(), 'sk-ant-secret-9999')
         page = c.get(f'/admin/integration_settings/integrationcredential/{row.id}/change/', HTTP_HOST='localhost')
         self.assertNotIn(b'sk-ant-secret-9999', page.content)
+
+
+class PlatformPortalTests(TestCase):
+    def _ctx(self, user):
+        from django.test import RequestFactory
+        req = RequestFactory().post('/graphql/')
+        req.user = user
+        return req
+
+    def test_only_platform_admin_can_use_the_portal(self):
+        from graphene.test import Client
+        from config.schema import schema
+        org = Organization.objects.create(name='F', slug='f')
+        farmer = User.objects.create_user(email='f@x.test', password='x', full_name='F', organization=org)
+        boss = User.objects.create_superuser(email='b@x.test', password='x', full_name='B')
+        c = Client(schema)
+        out = c.execute('{ platformOverview }', context_value=self._ctx(farmer))
+        self.assertIn('errors', out)
+        out = c.execute('{ platformOverview platformAiSettings platformOrganisations }', context_value=self._ctx(boss))
+        self.assertNotIn('errors', out)
+        out = c.execute('mutation { savePlatformAiKey(apiKey: "sk-ant-abcdefghijklmnopqrstuvwxyz") { ok } }', context_value=self._ctx(boss))
+        self.assertNotIn('errors', out)
+        from apps.integration_settings.models import IntegrationCredential
+        self.assertEqual(IntegrationCredential.objects.get(service='ai').get_api_key(), 'sk-ant-abcdefghijklmnopqrstuvwxyz')
+        out = c.execute('mutation { savePlatformAiKey(apiKey: "short") { ok } }', context_value=self._ctx(boss))
+        self.assertIn('errors', out)
+        out = c.execute('mutation { savePlatformAiKey(apiKey: "sk-ant-abcdefghijklmnopqrstuvwxyz") { ok } }', context_value=self._ctx(farmer))
+        self.assertIn('errors', out)
