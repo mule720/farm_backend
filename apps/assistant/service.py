@@ -220,7 +220,7 @@ def _ask_model(question, history, acct, ctx, chunks):
     msgs.append({'role': 'user', 'content': question})
     model = getattr(settings, 'ASSISTANT_MODEL', '') or os.environ.get('ASSISTANT_MODEL', '') or 'claude-sonnet-5-5'
     resp = client.messages.create(model=model, max_tokens=2500, system=system, messages=msgs,
-                                  tools=[REPLY_TOOL], tool_choice={'type': 'tool', 'name': 'reply'})
+                                  tools=[REPLY_TOOL], tool_choice={'type': 'auto'})
     for b in resp.content:
         if getattr(b, 'type', '') == 'tool_use' and isinstance(b.input, dict):
             return b.input
