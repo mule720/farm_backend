@@ -162,3 +162,13 @@ class PlatformPortalTests(TestCase):
         self.assertIn('errors', out)
         out = c.execute('mutation { savePlatformAiKey(apiKey: "sk-ant-abcdefghijklmnopqrstuvwxyz") { ok } }', context_value=self._ctx(farmer))
         self.assertIn('errors', out)
+
+
+class ParseTests(TestCase):
+    def test_parse_variants(self):
+        self.assertEqual(service._parse('{"answer":"a","suggestions":["x"]}')['suggestions'], ['x'])
+        self.assertEqual(service._parse('Hello there.\n\n{"answer": "Hello there.", "suggestions": ["y"]}')['suggestions'], ['y'])
+        self.assertEqual(service._parse('Hello there.\n\n{"answer": "Hello there.", "sugg')['answer'], 'Hello there.')
+        self.assertEqual(service._parse('{"answer": "Cut off here, ok", "suggest')['answer'], 'Cut off here, ok')
+        self.assertEqual(service._parse('```json\n{"answer":"fenced"}\n```')['answer'], 'fenced')
+        self.assertEqual(service._parse('just text')['answer'], 'just text')

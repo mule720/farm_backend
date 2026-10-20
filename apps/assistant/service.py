@@ -121,17 +121,39 @@ def _clean_actions(raw, acct):
 
 
 def _parse(text):
+    """The model is asked for a JSON object. Be forgiving: prose before it, a cut-off object, or a repeated object."""
     t = (text or '').strip()
     t = re.sub(r'^```(?:json)?\s*|\s*```$', '', t)
     try:
-        return json.loads(t)
+        data = json.loads(t)
+        if isinstance(data, dict):
+            return data
     except ValueError:
-        m = re.search(r'\{.*\}', t, re.S)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except ValueError:
-                pass
+        pass
+    i = t.find('{"answer"')
+    if i > 0:                                  # prose first, then a JSON copy: keep the prose, try the JSON for the extras
+        prose = t[:i].strip()
+        try:
+            data = json.loads(t[i:])
+            if isinstance(data, dict):
+                data.setdefault('answer', prose)
+                return data
+        except ValueError:
+            return {'answer': prose}
+    m = re.search(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)"', t, re.S)   # object cut off part-way: pull the answer out
+    if m:
+        try:
+            return {'answer': json.loads('"' + m.group(1) + '"')}
+        except ValueError:
+            return {'answer': m.group(1).replace('\\n', '\n')}
+    m = re.search(r'\{.*\}', t, re.S)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, dict):
+                return data
+        except ValueError:
+            pass
     return {'answer': t}
 
 
@@ -144,7 +166,7 @@ def _ask_model(question, history, acct, ctx, chunks):
     msgs = [{'role': h['role'], 'content': _trim(h['content'], 1200)} for h in history]
     msgs.append({'role': 'user', 'content': question})
     model = getattr(settings, 'ASSISTANT_MODEL', '') or os.environ.get('ASSISTANT_MODEL', '') or 'claude-sonnet-5-5'
-    resp = client.messages.create(model=model, max_tokens=900, system=system, messages=msgs)
+    resp = client.messages.create(model=model, max_tokens=1400, system=system, messages=msgs)
     return ''.join(b.text for b in resp.content if getattr(b, 'type', '') == 'text')
 
 
