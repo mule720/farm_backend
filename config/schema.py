@@ -27,6 +27,7 @@ from apps.notifications.schema import NotificationQuery, NotificationMutation
 from apps.video_calls.schema import VideoCallQuery, VideoCallMutation
 from apps.integration_settings.schema import IntegrationSettingsQuery, IntegrationSettingsMutation
 from apps.government.schema import GovernmentQuery, GovernmentMutation
+from apps.assistant.schema import AssistantQuery, AssistantMutation
 from apps.extension.schema import ExtensionQuery, ExtensionMutation
 from apps.partners.schema import PartnerQuery, PartnerMutation
 from apps.market.export_schema import ExportQuery, ExportMutation
@@ -69,6 +70,7 @@ class Query(
     VideoCallQuery,
     IntegrationSettingsQuery,
     GovernmentQuery,
+    AssistantQuery,
     ExtensionQuery,
     PartnerQuery,
     ExportQuery,
@@ -115,6 +117,7 @@ class Mutation(
     VideoCallMutation,
     IntegrationSettingsMutation,
     GovernmentMutation,
+    AssistantMutation,
     ExtensionMutation,
     PartnerMutation,
     LogframeMutation,
